@@ -9,13 +9,15 @@ import (
 // This is the application adapter that the sessionManagerService implements.
 type SessionManager interface {
 	CreateSession(name string, description string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error)
-	StartSession(id string) error
+	StartSession(id string, rows int, cols int) error
 	StopSession(id string) error
-	ResumeSession(id string) error
+	ResumeSession(id string, rows int, cols int) error
 	DeleteSession(id string) error
 	ListSessions() ([]entity.Session, error)
 	ListSessionsByRepo(repoID string) ([]entity.Session, error)
 	ListSessionsByTask(taskID string) ([]entity.Session, error)
 	GetSession(id string) (*entity.Session, error)
 	SendMessage(id string, message string) error
+	ResizeTerminal(id string, rows int, cols int) error
+	GetSessionOutput(id string) (string, error)
 }

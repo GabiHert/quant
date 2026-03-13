@@ -9,6 +9,8 @@ export function DeleteSession(arg1:string):Promise<void>;
 
 export function GetSession(arg1:string):Promise<dto.SessionResponse>;
 
+export function GetSessionOutput(arg1:string):Promise<string>;
+
 export function ListSessions():Promise<Array<dto.SessionResponse>>;
 
 export function ListSessionsByRepo(arg1:string):Promise<Array<dto.SessionResponse>>;
@@ -19,10 +21,12 @@ export function OnShutdown(arg1:context.Context):Promise<void>;
 
 export function OnStartup(arg1:context.Context):Promise<void>;
 
-export function ResumeSession(arg1:string):Promise<void>;
+export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function ResumeSession(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function SendMessage(arg1:string,arg2:string):Promise<void>;
 
-export function StartSession(arg1:string):Promise<void>;
+export function StartSession(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function StopSession(arg1:string):Promise<void>;

@@ -190,15 +190,17 @@ function App() {
       await fetchSessionsForRepo(req.repoId);
       if (req.taskId) await fetchSessionsForTask(req.taskId);
       setActiveSessionId(session.id);
+      // Auto-start the session (terminal will resize on mount)
+      await api.startSession(session.id, 24, 80);
     } catch (err) {
       setError(String(err));
     }
   }
 
-  async function handleStart(id: string) {
+  async function handleStart(id: string, rows?: number, cols?: number) {
     try {
       setError(null);
-      await api.startSession(id);
+      await api.startSession(id, rows ?? 24, cols ?? 80);
     } catch (err) {
       setError(String(err));
     }
@@ -213,10 +215,10 @@ function App() {
     }
   }
 
-  async function handleResume(id: string) {
+  async function handleResume(id: string, rows?: number, cols?: number) {
     try {
       setError(null);
-      await api.resumeSession(id);
+      await api.resumeSession(id, rows ?? 24, cols ?? 80);
     } catch (err) {
       setError(String(err));
     }
@@ -319,7 +321,6 @@ function App() {
             onStop={handleStop}
             onResume={handleResume}
             onDelete={handleDelete}
-            onSendMessage={handleSendMessage}
             onClose={() => setActiveSessionId(null)}
           />
         ) : (

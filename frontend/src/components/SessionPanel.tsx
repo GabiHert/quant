@@ -1,18 +1,19 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import type { Session, Task } from "../types";
 import { StatusDot } from "./StatusDot";
+import * as api from "../api";
 
 interface Props {
   session: Session;
   task: Task | null;
-  onStart: (id: string) => void;
+  onStart: (id: string, rows?: number, cols?: number) => void;
   onStop: (id: string) => void;
-  onResume: (id: string) => void;
+  onResume: (id: string, rows?: number, cols?: number) => void;
   onDelete: (id: string) => void;
-  onSendMessage: (id: string, message: string) => void;
   onClose: () => void;
 }
 
@@ -23,13 +24,11 @@ export function SessionPanel({
   onStop,
   onResume,
   onDelete,
-  onSendMessage,
   onClose,
 }: Props) {
   const termRef = useRef<HTMLDivElement>(null);
   const termInstance = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
-  const [inputMessage, setInputMessage] = useState("");
 
   const isRunning = session.status === "running";
 
@@ -63,7 +62,7 @@ export function SessionPanel({
       fontFamily: "'JetBrains Mono', monospace",
       fontSize: 13,
       lineHeight: 1.3,
-      cursorBlink: false,
+      cursorBlink: true,
       cursorStyle: "block",
       scrollback: 10000,
       convertEol: true,
@@ -72,16 +71,52 @@ export function SessionPanel({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(termRef.current);
+
+    // Use WebGL renderer for crisp rendering without ghosting artifacts.
+    try {
+      const webgl = new WebglAddon();
+      term.loadAddon(webgl);
+    } catch {
+      // WebGL not available, fall back to canvas renderer.
+    }
+
     fit.fit();
 
     termInstance.current = term;
     fitAddon.current = fit;
 
-    // Handle window resize
+    // Send terminal input (keystrokes) to the PTY
+    term.onData((data) => {
+      api.sendMessage(session.id, data).catch(() => {
+        // Process may not be running
+      });
+    });
+
+    // Sync PTY size when terminal resizes
+    term.onResize(({ rows, cols }) => {
+      api.resizeTerminal(session.id, rows, cols).catch(() => {
+        // Process may not be running
+      });
+    });
+
+    // Handle window/container resize
     const resizeObserver = new ResizeObserver(() => {
       try { fit.fit(); } catch { /* ignore */ }
     });
     resizeObserver.observe(termRef.current);
+
+    // Initial PTY size sync
+    api.resizeTerminal(session.id, term.rows, term.cols).catch(() => {});
+
+    // Replay saved output from disk
+    api.getSessionOutput(session.id).then((output) => {
+      if (output && term) {
+        term.write(output);
+      }
+    }).catch(() => {});
+
+    // Focus the terminal
+    term.focus();
 
     return () => {
       resizeObserver.disconnect();
@@ -89,7 +124,7 @@ export function SessionPanel({
       termInstance.current = null;
       fitAddon.current = null;
     };
-  }, [session.id]); // re-create terminal when session changes
+  }, [session.id]);
 
   // Listen for PTY output events
   useEffect(() => {
@@ -120,13 +155,6 @@ export function SessionPanel({
 
     return () => { if (cancel) cancel(); };
   }, [session.id]);
-
-  function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    if (!inputMessage.trim()) return;
-    onSendMessage(session.id, inputMessage.trim());
-    setInputMessage("");
-  }
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: "#0A0A0A" }}>
@@ -163,8 +191,8 @@ export function SessionPanel({
             <span
               className="shrink-0 text-[9px] px-1.5 py-0.5"
               style={{
-                color: "#4B5563",
-                border: "1px solid #2a2a2a",
+                color: "#10B981",
+                border: "1px solid #10B981",
               }}
             >
               wt {session.branchName}
@@ -173,13 +201,13 @@ export function SessionPanel({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {session.status === "idle" && (
-            <ActionBtn label="$ start" onClick={() => onStart(session.id)} color="#10B981" />
+            <ActionBtn label="$ start" onClick={() => onStart(session.id, termInstance.current?.rows, termInstance.current?.cols)} color="#10B981" />
           )}
           {isRunning && (
             <ActionBtn label="$ stop" onClick={() => onStop(session.id)} color="#F59E0B" />
           )}
           {session.status === "paused" && (
-            <ActionBtn label="$ resume" onClick={() => onResume(session.id)} color="#10B981" />
+            <ActionBtn label="$ resume" onClick={() => onResume(session.id, termInstance.current?.rows, termInstance.current?.cols)} color="#10B981" />
           )}
           <ActionBtn label="$ delete" onClick={() => onDelete(session.id)} color="#EF4444" />
           <button
@@ -195,92 +223,13 @@ export function SessionPanel({
         </div>
       </div>
 
-      {/* info bar */}
-      <div
-        className="px-4 py-2 shrink-0"
-        style={{ borderBottom: "1px solid #2a2a2a" }}
-      >
-        {session.description && (
-          <p
-            className="text-xs mb-1"
-            style={{
-              color: "#6B7280",
-              fontFamily: "'IBM Plex Mono', monospace",
-            }}
-          >
-            // {session.description}
-          </p>
-        )}
-        <p
-          className="text-[10px]"
-          style={{
-            color: "#4B5563",
-            fontFamily: "'JetBrains Mono', monospace",
-          }}
-        >
-          dir: {session.directory}
-          {session.claudeConvId && (
-            <span className="ml-3">
-              conv: {session.claudeConvId.slice(0, 8)}...
-            </span>
-          )}
-          {session.pid > 0 && (
-            <span className="ml-3">pid: {session.pid}</span>
-          )}
-        </p>
-      </div>
-
-      {/* xterm.js terminal */}
+      {/* full terminal — handles all input/output, fills remaining space */}
       <div
         ref={termRef}
-        className="flex-1 min-h-0"
-        style={{ padding: "4px 0 0 4px" }}
+        className="flex-1 min-h-0 w-full"
+        style={{ overflow: "hidden" }}
+        onClick={() => termInstance.current?.focus()}
       />
-
-      {/* chat bar */}
-      <form
-        onSubmit={handleSend}
-        className="flex items-center gap-2 px-4 py-3 shrink-0"
-        style={{
-          backgroundColor: "#0A0A0A",
-          borderTop: "1px solid #2a2a2a",
-        }}
-      >
-        <span
-          className="shrink-0 text-sm"
-          style={{ color: "#10B981", fontFamily: "'JetBrains Mono', monospace" }}
-        >
-          {">"}
-        </span>
-        <input
-          value={inputMessage}
-          onChange={(e) => setInputMessage(e.target.value)}
-          placeholder={isRunning ? "send a message..." : "start the session to send messages"}
-          disabled={!isRunning}
-          className="flex-1 px-3 py-2 text-xs focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{
-            backgroundColor: "#0A0A0A",
-            border: "1px solid #2a2a2a",
-            color: "#FAFAFA",
-            fontFamily: "'JetBrains Mono', monospace",
-          }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = "#10B981")}
-          onBlur={(e) => (e.currentTarget.style.borderColor = "#2a2a2a")}
-        />
-        <button
-          type="submit"
-          disabled={!isRunning || !inputMessage.trim()}
-          className="px-4 py-2 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{
-            backgroundColor: "#10B981",
-            color: "#0A0A0A",
-            fontFamily: "'JetBrains Mono', monospace",
-            fontWeight: 500,
-          }}
-        >
-          send
-        </button>
-      </form>
     </div>
   );
 }

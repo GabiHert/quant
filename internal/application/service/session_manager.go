@@ -99,7 +99,7 @@ func (s *sessionManagerService) CreateSession(name string, description string, r
 }
 
 // StartSession spawns a Claude process for the given session.
-func (s *sessionManagerService) StartSession(id string) error {
+func (s *sessionManagerService) StartSession(id string, rows int, cols int) error {
 	session, err := s.findSession.FindByID(id)
 	if err != nil {
 		return fmt.Errorf("failed to find session: %w", err)
@@ -109,7 +109,7 @@ func (s *sessionManagerService) StartSession(id string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 
-	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions)
+	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
 	if err != nil {
 		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
 		return fmt.Errorf("failed to spawn process: %w", err)
@@ -153,7 +153,7 @@ func (s *sessionManagerService) StopSession(id string) error {
 }
 
 // ResumeSession resumes a paused session by spawning a new Claude process with the existing conversation ID.
-func (s *sessionManagerService) ResumeSession(id string) error {
+func (s *sessionManagerService) ResumeSession(id string, rows int, cols int) error {
 	session, err := s.findSession.FindByID(id)
 	if err != nil {
 		return fmt.Errorf("failed to find session: %w", err)
@@ -163,7 +163,7 @@ func (s *sessionManagerService) ResumeSession(id string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 
-	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions)
+	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
 	if err != nil {
 		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
 		return fmt.Errorf("failed to spawn process: %w", err)
@@ -195,6 +195,11 @@ func (s *sessionManagerService) DeleteSession(id string) error {
 
 	if session.Status == sessionstatus.Running {
 		_ = s.spawnProcess.Stop(id)
+	}
+
+	// Clean up worktree if this session had one.
+	if session.WorktreePath != "" {
+		_ = s.manageWorktree.Delete(session.WorktreePath)
 	}
 
 	err = s.deleteSession.Delete(id)
@@ -270,4 +275,18 @@ func (s *sessionManagerService) SendMessage(id string, message string) error {
 	}
 
 	return nil
+}
+
+// ResizeTerminal updates the PTY size for a running session.
+func (s *sessionManagerService) ResizeTerminal(id string, rows int, cols int) error {
+	return s.spawnProcess.Resize(id, uint16(rows), uint16(cols))
+}
+
+// GetSessionOutput returns the persisted terminal output for a session.
+func (s *sessionManagerService) GetSessionOutput(id string) (string, error) {
+	data, err := s.spawnProcess.GetOutput(id)
+	if err != nil {
+		return "", fmt.Errorf("failed to get session output: %w", err)
+	}
+	return string(data), nil
 }

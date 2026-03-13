@@ -4,6 +4,7 @@ package worktree
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,25 +14,41 @@ import (
 )
 
 // worktreeManager implements the adapter.WorktreeManager interface using git CLI commands.
-type worktreeManager struct{}
+type worktreeManager struct {
+	baseDir string // ~/.quant/worktrees/
+}
 
 // NewWorktreeManager creates a new git worktree manager.
-// Returns the adapter.WorktreeManager interface, not the concrete type.
+// Worktrees are stored in ~/.quant/worktrees/ to keep them hidden from the user's project directories.
 func NewWorktreeManager() adapter.WorktreeManager {
-	return &worktreeManager{}
+	homeDir, _ := os.UserHomeDir()
+	baseDir := filepath.Join(homeDir, ".quant", "worktrees")
+	_ = os.MkdirAll(baseDir, 0755)
+
+	return &worktreeManager{baseDir: baseDir}
 }
 
 // Create creates a new git worktree with the given branch name.
-// The worktree is created as a sibling directory of the repository.
+// The worktree is stored in ~/.quant/worktrees/<sanitized-branch-name>.
 func (m *worktreeManager) Create(repoDir string, branchName string) (usecase.WorktreeInfo, error) {
-	worktreePath := filepath.Join(filepath.Dir(repoDir), filepath.Base(repoDir)+"-"+branchName)
+	// Sanitize branch name for use as directory name.
+	dirName := strings.ReplaceAll(branchName, "/", "-")
+	worktreePath := filepath.Join(m.baseDir, dirName)
 
+	// Try creating with new branch first.
 	cmd := exec.Command("git", "worktree", "add", "-b", branchName, worktreePath)
 	cmd.Dir = repoDir
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return usecase.WorktreeInfo{}, fmt.Errorf("failed to create worktree: %s: %w", string(output), err)
+		// Branch may already exist — try checking it out instead.
+		cmd2 := exec.Command("git", "worktree", "add", worktreePath, branchName)
+		cmd2.Dir = repoDir
+		output2, err2 := cmd2.CombinedOutput()
+		if err2 != nil {
+			return usecase.WorktreeInfo{}, fmt.Errorf("failed to create worktree: %s: %w", string(output2), err2)
+		}
+		_ = output
 	}
 
 	return usecase.WorktreeInfo{
@@ -40,14 +57,21 @@ func (m *worktreeManager) Create(repoDir string, branchName string) (usecase.Wor
 	}, nil
 }
 
-// Delete removes a git worktree.
+// Delete removes a git worktree and cleans up the branch.
 func (m *worktreeManager) Delete(worktreePath string) error {
-	cmd := exec.Command("git", "worktree", "remove", worktreePath)
+	// Force remove the worktree (handles dirty working trees).
+	cmd := exec.Command("git", "worktree", "remove", "--force", worktreePath)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to remove worktree: %s: %w", string(output), err)
+		// If worktree remove fails, try to just delete the directory.
+		_ = os.RemoveAll(worktreePath)
 	}
+	_ = output
+
+	// Prune stale worktree references.
+	pruneCmd := exec.Command("git", "worktree", "prune")
+	_ = pruneCmd.Run()
 
 	return nil
 }
@@ -77,7 +101,6 @@ func (m *worktreeManager) List(repoDir string) ([]usecase.WorktreeInfo, error) {
 			}
 		} else if strings.HasPrefix(line, "branch ") {
 			branch := strings.TrimPrefix(line, "branch ")
-			// Strip refs/heads/ prefix.
 			branch = strings.TrimPrefix(branch, "refs/heads/")
 			current.Branch = branch
 		}

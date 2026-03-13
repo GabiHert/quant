@@ -12,13 +12,15 @@ type SessionController interface {
 	OnStartup(ctx context.Context)
 	OnShutdown(ctx context.Context)
 	CreateSession(request dto.CreateSessionRequest) (*dto.SessionResponse, error)
-	StartSession(id string) error
+	StartSession(id string, rows int, cols int) error
 	StopSession(id string) error
-	ResumeSession(id string) error
+	ResumeSession(id string, rows int, cols int) error
 	DeleteSession(id string) error
 	ListSessions() ([]dto.SessionResponse, error)
 	ListSessionsByRepo(repoID string) ([]dto.SessionResponse, error)
 	ListSessionsByTask(taskID string) ([]dto.SessionResponse, error)
 	GetSession(id string) (*dto.SessionResponse, error)
 	SendMessage(id string, message string) error
+	ResizeTerminal(id string, rows int, cols int) error
+	GetSessionOutput(id string) (string, error)
 }

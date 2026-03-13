@@ -45,8 +45,8 @@ func (c *sessionController) CreateSession(request dto.CreateSessionRequest) (*dt
 }
 
 // StartSession starts a session by spawning a Claude process.
-func (c *sessionController) StartSession(id string) error {
-	return c.sessionManager.StartSession(id)
+func (c *sessionController) StartSession(id string, rows int, cols int) error {
+	return c.sessionManager.StartSession(id, rows, cols)
 }
 
 // StopSession stops a running session.
@@ -55,8 +55,8 @@ func (c *sessionController) StopSession(id string) error {
 }
 
 // ResumeSession resumes a paused session.
-func (c *sessionController) ResumeSession(id string) error {
-	return c.sessionManager.ResumeSession(id)
+func (c *sessionController) ResumeSession(id string, rows int, cols int) error {
+	return c.sessionManager.ResumeSession(id, rows, cols)
 }
 
 // DeleteSession deletes a session.
@@ -107,4 +107,14 @@ func (c *sessionController) GetSession(id string) (*dto.SessionResponse, error) 
 // SendMessage sends a message to a running session's Claude process.
 func (c *sessionController) SendMessage(id string, message string) error {
 	return c.sessionManager.SendMessage(id, message)
+}
+
+// ResizeTerminal updates the PTY size for a running session.
+func (c *sessionController) ResizeTerminal(id string, rows int, cols int) error {
+	return c.sessionManager.ResizeTerminal(id, rows, cols)
+}
+
+// GetSessionOutput returns the persisted terminal output for a session.
+func (c *sessionController) GetSessionOutput(id string) (string, error) {
+	return c.sessionManager.GetSessionOutput(id)
 }

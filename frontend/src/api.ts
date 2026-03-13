@@ -95,16 +95,16 @@ export function getSession(id: string): Promise<Session> {
   return callGo(PKG, SESSION_CTRL, "GetSession", id);
 }
 
-export function startSession(id: string): Promise<void> {
-  return callGo(PKG, SESSION_CTRL, "StartSession", id);
+export function startSession(id: string, rows: number, cols: number): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "StartSession", id, rows, cols);
 }
 
 export function stopSession(id: string): Promise<void> {
   return callGo(PKG, SESSION_CTRL, "StopSession", id);
 }
 
-export function resumeSession(id: string): Promise<void> {
-  return callGo(PKG, SESSION_CTRL, "ResumeSession", id);
+export function resumeSession(id: string, rows: number, cols: number): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "ResumeSession", id, rows, cols);
 }
 
 export function deleteSession(id: string): Promise<void> {
@@ -113,6 +113,14 @@ export function deleteSession(id: string): Promise<void> {
 
 export function sendMessage(id: string, message: string): Promise<void> {
   return callGo(PKG, SESSION_CTRL, "SendMessage", id, message);
+}
+
+export function resizeTerminal(id: string, rows: number, cols: number): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "ResizeTerminal", id, rows, cols);
+}
+
+export function getSessionOutput(id: string): Promise<string> {
+  return callGo(PKG, SESSION_CTRL, "GetSessionOutput", id);
 }
 
 // --- Actions ---

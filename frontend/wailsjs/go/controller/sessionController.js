@@ -14,6 +14,10 @@ export function GetSession(arg1) {
   return window['go']['controller']['sessionController']['GetSession'](arg1);
 }
 
+export function GetSessionOutput(arg1) {
+  return window['go']['controller']['sessionController']['GetSessionOutput'](arg1);
+}
+
 export function ListSessions() {
   return window['go']['controller']['sessionController']['ListSessions']();
 }
@@ -34,16 +38,20 @@ export function OnStartup(arg1) {
   return window['go']['controller']['sessionController']['OnStartup'](arg1);
 }
 
-export function ResumeSession(arg1) {
-  return window['go']['controller']['sessionController']['ResumeSession'](arg1);
+export function ResizeTerminal(arg1, arg2, arg3) {
+  return window['go']['controller']['sessionController']['ResizeTerminal'](arg1, arg2, arg3);
+}
+
+export function ResumeSession(arg1, arg2, arg3) {
+  return window['go']['controller']['sessionController']['ResumeSession'](arg1, arg2, arg3);
 }
 
 export function SendMessage(arg1, arg2) {
   return window['go']['controller']['sessionController']['SendMessage'](arg1, arg2);
 }
 
-export function StartSession(arg1) {
-  return window['go']['controller']['sessionController']['StartSession'](arg1);
+export function StartSession(arg1, arg2, arg3) {
+  return window['go']['controller']['sessionController']['StartSession'](arg1, arg2, arg3);
 }
 
 export function StopSession(arg1) {
