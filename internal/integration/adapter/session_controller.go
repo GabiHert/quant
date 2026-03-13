@@ -1,0 +1,24 @@
+package adapter
+
+import (
+	"context"
+
+	"quant/internal/integration/entrypoint/dto"
+)
+
+// SessionController defines the interface for the session entrypoint controller.
+// This interface is what the Wails app binds to.
+type SessionController interface {
+	OnStartup(ctx context.Context)
+	OnShutdown(ctx context.Context)
+	CreateSession(request dto.CreateSessionRequest) (*dto.SessionResponse, error)
+	StartSession(id string) error
+	StopSession(id string) error
+	ResumeSession(id string) error
+	DeleteSession(id string) error
+	ListSessions() ([]dto.SessionResponse, error)
+	ListSessionsByRepo(repoID string) ([]dto.SessionResponse, error)
+	ListSessionsByTask(taskID string) ([]dto.SessionResponse, error)
+	GetSession(id string) (*dto.SessionResponse, error)
+	SendMessage(id string, message string) error
+}

@@ -1,0 +1,273 @@
+// Package service contains application service implementations with business logic.
+package service
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"quant/internal/application/adapter"
+	"quant/internal/application/usecase"
+	"quant/internal/domain/entity"
+	"quant/internal/domain/enums/sessionstatus"
+)
+
+// sessionManagerService implements the adapter.SessionManager interface.
+type sessionManagerService struct {
+	findSession    usecase.FindSession
+	saveSession    usecase.SaveSession
+	deleteSession  usecase.DeleteSession
+	updateSession  usecase.UpdateSession
+	spawnProcess   usecase.SpawnProcess
+	findRepo       usecase.FindRepo
+	manageWorktree usecase.ManageWorktree
+}
+
+// NewSessionManagerService creates a new SessionManager service.
+// Returns the adapter.SessionManager interface, not the concrete type.
+func NewSessionManagerService(
+	findSession usecase.FindSession,
+	saveSession usecase.SaveSession,
+	deleteSession usecase.DeleteSession,
+	updateSession usecase.UpdateSession,
+	spawnProcess usecase.SpawnProcess,
+	findRepo usecase.FindRepo,
+	manageWorktree usecase.ManageWorktree,
+) adapter.SessionManager {
+	return &sessionManagerService{
+		findSession:    findSession,
+		saveSession:    saveSession,
+		deleteSession:  deleteSession,
+		updateSession:  updateSession,
+		spawnProcess:   spawnProcess,
+		findRepo:       findRepo,
+		manageWorktree: manageWorktree,
+	}
+}
+
+// CreateSession creates a new session with the given parameters.
+// The directory is resolved from the repo's path.
+func (s *sessionManagerService) CreateSession(name string, description string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error) {
+	repo, err := s.findRepo.FindRepoByID(repoID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find repo: %w", err)
+	}
+
+	if repo == nil {
+		return nil, fmt.Errorf("repo not found: %s", repoID)
+	}
+
+	directory := repo.Path
+	var worktreePath, branchName string
+
+	if useWorktree {
+		branch := "quant/" + strings.ReplaceAll(strings.ToLower(name), " ", "-")
+		wt, wtErr := s.manageWorktree.Create(repo.Path, branch)
+		if wtErr != nil {
+			return nil, fmt.Errorf("failed to create worktree: %w", wtErr)
+		}
+		directory = wt.Path
+		worktreePath = wt.Path
+		branchName = wt.Branch
+	}
+
+	now := time.Now()
+	session := entity.Session{
+		ID:              uuid.New().String(),
+		Name:            name,
+		Description:     description,
+		Status:          sessionstatus.Idle,
+		Directory:       directory,
+		WorktreePath:    worktreePath,
+		BranchName:      branchName,
+		RepoID:          repoID,
+		TaskID:          taskID,
+		SkipPermissions: skipPermissions,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		LastActiveAt:    now,
+	}
+
+	err = s.saveSession.Save(session)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save session: %w", err)
+	}
+
+	return &session, nil
+}
+
+// StartSession spawns a Claude process for the given session.
+func (s *sessionManagerService) StartSession(id string) error {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+
+	if session == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+
+	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions)
+	if err != nil {
+		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
+		return fmt.Errorf("failed to spawn process: %w", err)
+	}
+
+	session.PID = pid
+	session.Status = sessionstatus.Running
+	session.LastActiveAt = time.Now()
+	session.UpdatedAt = time.Now()
+
+	err = s.updateSession.Update(*session)
+	if err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	return nil
+}
+
+// StopSession stops the Claude process for the given session.
+func (s *sessionManagerService) StopSession(id string) error {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+
+	if session == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+
+	err = s.spawnProcess.Stop(id)
+	if err != nil {
+		// Process may have already exited, continue to update status.
+	}
+
+	err = s.updateSession.UpdateStatus(id, sessionstatus.Paused)
+	if err != nil {
+		return fmt.Errorf("failed to update session status: %w", err)
+	}
+
+	return nil
+}
+
+// ResumeSession resumes a paused session by spawning a new Claude process with the existing conversation ID.
+func (s *sessionManagerService) ResumeSession(id string) error {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+
+	if session == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+
+	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions)
+	if err != nil {
+		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
+		return fmt.Errorf("failed to spawn process: %w", err)
+	}
+
+	session.PID = pid
+	session.Status = sessionstatus.Running
+	session.LastActiveAt = time.Now()
+	session.UpdatedAt = time.Now()
+
+	err = s.updateSession.Update(*session)
+	if err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteSession removes a session and stops any running process.
+func (s *sessionManagerService) DeleteSession(id string) error {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+
+	if session == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+
+	if session.Status == sessionstatus.Running {
+		_ = s.spawnProcess.Stop(id)
+	}
+
+	err = s.deleteSession.Delete(id)
+	if err != nil {
+		return fmt.Errorf("failed to delete session: %w", err)
+	}
+
+	return nil
+}
+
+// ListSessions returns all sessions.
+func (s *sessionManagerService) ListSessions() ([]entity.Session, error) {
+	sessions, err := s.findSession.FindAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
+	}
+
+	return sessions, nil
+}
+
+// ListSessionsByRepo returns all sessions for a given repository.
+func (s *sessionManagerService) ListSessionsByRepo(repoID string) ([]entity.Session, error) {
+	sessions, err := s.findSession.FindByRepoID(repoID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions by repo: %w", err)
+	}
+
+	return sessions, nil
+}
+
+// ListSessionsByTask returns all sessions for a given task.
+func (s *sessionManagerService) ListSessionsByTask(taskID string) ([]entity.Session, error) {
+	sessions, err := s.findSession.FindByTaskID(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions by task: %w", err)
+	}
+
+	return sessions, nil
+}
+
+// GetSession returns a session by ID.
+func (s *sessionManagerService) GetSession(id string) (*entity.Session, error) {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	if session == nil {
+		return nil, fmt.Errorf("session not found: %s", id)
+	}
+
+	return session, nil
+}
+
+// SendMessage sends a message to the Claude process for the given session.
+func (s *sessionManagerService) SendMessage(id string, message string) error {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+
+	if session == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+
+	if session.Status != sessionstatus.Running {
+		return fmt.Errorf("session is not running: %s", id)
+	}
+
+	err = s.spawnProcess.SendMessage(id, message)
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	return nil
+}

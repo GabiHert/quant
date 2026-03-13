@@ -1,0 +1,21 @@
+// Package adapter contains interfaces that application services implement.
+package adapter
+
+import (
+	"quant/internal/domain/entity"
+)
+
+// SessionManager defines the service interface for session management operations.
+// This is the application adapter that the sessionManagerService implements.
+type SessionManager interface {
+	CreateSession(name string, description string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error)
+	StartSession(id string) error
+	StopSession(id string) error
+	ResumeSession(id string) error
+	DeleteSession(id string) error
+	ListSessions() ([]entity.Session, error)
+	ListSessionsByRepo(repoID string) ([]entity.Session, error)
+	ListSessionsByTask(taskID string) ([]entity.Session, error)
+	GetSession(id string) (*entity.Session, error)
+	SendMessage(id string, message string) error
+}
