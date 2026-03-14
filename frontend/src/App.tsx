@@ -433,6 +433,8 @@ function App() {
         onDeleteSession={handleDelete}
         onMoveSession={handleMoveSession}
         onDoubleClickSession={handleDoubleClickSession}
+        onDropSession={(sessionId, targetTaskId) => handleMoveSessionSelect(sessionId, targetTaskId)}
+        onError={(msg) => setError(msg)}
       />
 
       <main className="flex-1 flex flex-col relative" style={{ backgroundColor: "#0A0A0A" }}>

@@ -28,6 +28,8 @@ interface SidebarProps {
   onDeleteSession: (sessionId: string) => void;
   onMoveSession?: (sessionId: string, repoId: string) => void;
   onDoubleClickSession?: (id: string) => void;
+  onDropSession?: (sessionId: string, targetTaskId: string) => void;
+  onError?: (msg: string) => void;
 }
 
 export function Sidebar({
@@ -51,6 +53,8 @@ export function Sidebar({
   onDeleteSession,
   onMoveSession,
   onDoubleClickSession,
+  onDropSession,
+  onError,
 }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -267,6 +271,8 @@ export function Sidebar({
             onTaskContextMenu={openTaskContextMenu}
             onSessionContextMenu={openSessionContextMenu}
             onDoubleClickSession={onDoubleClickSession}
+            onDropSession={onDropSession}
+            onError={onError}
             showSeparator={idx < repos.length - 1}
           />
         ))}
@@ -325,6 +331,8 @@ function RepoNode({
   onTaskContextMenu,
   onSessionContextMenu,
   onDoubleClickSession,
+  onDropSession,
+  onError,
   showSeparator,
 }: {
   repo: Repo;
@@ -344,6 +352,8 @@ function RepoNode({
   onTaskContextMenu: (e: React.MouseEvent, task: Task) => void;
   onSessionContextMenu: (e: React.MouseEvent, session: Session) => void;
   onDoubleClickSession?: (id: string) => void;
+  onDropSession?: (sessionId: string, targetTaskId: string) => void;
+  onError?: (msg: string) => void;
   showSeparator: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -402,6 +412,9 @@ function RepoNode({
               onTaskContextMenu={onTaskContextMenu}
               onSessionContextMenu={onSessionContextMenu}
               onDoubleClickSession={onDoubleClickSession}
+              onDropSession={onDropSession}
+              onError={onError}
+              repoId={repo.id}
             />
           ))}
 
@@ -444,6 +457,9 @@ function TaskNode({
   onTaskContextMenu,
   onSessionContextMenu,
   onDoubleClickSession,
+  onDropSession,
+  onError,
+  repoId,
 }: {
   task: Task;
   sessions: Session[];
@@ -459,11 +475,46 @@ function TaskNode({
   onTaskContextMenu: (e: React.MouseEvent, task: Task) => void;
   onSessionContextMenu: (e: React.MouseEvent, session: Session) => void;
   onDoubleClickSession?: (id: string) => void;
+  onDropSession?: (sessionId: string, targetTaskId: string) => void;
+  onError?: (msg: string) => void;
+  repoId: string;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+    const sessionId = e.dataTransfer.getData("sessionId");
+    const sourceRepoId = e.dataTransfer.getData("repoId");
+    const sourceTaskId = e.dataTransfer.getData("taskId");
+    if (!sessionId) return;
+
+    if (sourceRepoId !== repoId) {
+      if (onError) onError("cannot move sessions across repos");
+      return;
+    }
+    if (sourceTaskId === task.id) return; // same task, no-op
+
+    if (onDropSession) onDropSession(sessionId, task.id);
+  }
 
   return (
-    <div>
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
         onContextMenu={(e) => onTaskContextMenu(e, task)}
@@ -471,9 +522,11 @@ function TaskNode({
         style={{
           paddingLeft: "28px",
           fontFamily: "'JetBrains Mono', monospace",
+          backgroundColor: isDragOver ? "#1F1F1F" : undefined,
+          borderLeft: isDragOver ? "2px solid #10B981" : "2px solid transparent",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#1F1F1F")}
-        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+        onMouseEnter={(e) => { if (!isDragOver) e.currentTarget.style.backgroundColor = "#1F1F1F"; }}
+        onMouseLeave={(e) => { if (!isDragOver) e.currentTarget.style.backgroundColor = "transparent"; }}
       >
         <span className="text-[10px] w-3 shrink-0" style={{ color: "#4B5563" }}>
           {expanded ? "v" : ">"}
@@ -589,9 +642,18 @@ function SessionNode({
     }
   }
 
+  function handleDragStart(e: React.DragEvent) {
+    e.dataTransfer.setData("sessionId", session.id);
+    e.dataTransfer.setData("repoId", session.repoId);
+    e.dataTransfer.setData("taskId", session.taskId);
+    e.dataTransfer.effectAllowed = "move";
+  }
+
   return (
     <div>
       <button
+        draggable
+        onDragStart={handleDragStart}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={(e) => onSessionContextMenu(e, session)}
