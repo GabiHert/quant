@@ -190,17 +190,25 @@ function App() {
       await fetchSessionsForRepo(req.repoId);
       if (req.taskId) await fetchSessionsForTask(req.taskId);
       setActiveSessionId(session.id);
-      // Auto-start the session (terminal will resize on mount)
-      await api.startSession(session.id, 24, 80);
+      // Session is created idle; terminal auto-starts it via onStart
     } catch (err) {
       setError(String(err));
     }
   }
 
-  async function handleStart(id: string, rows?: number, cols?: number) {
+  async function handleStart(id: string, rows: number, cols: number) {
     try {
       setError(null);
-      await api.startSession(id, rows ?? 24, cols ?? 80);
+      await api.startSession(id, rows, cols);
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function handleResume(id: string, rows: number, cols: number) {
+    try {
+      setError(null);
+      await api.resumeSession(id, rows, cols);
     } catch (err) {
       setError(String(err));
     }
@@ -210,15 +218,6 @@ function App() {
     try {
       setError(null);
       await api.stopSession(id);
-    } catch (err) {
-      setError(String(err));
-    }
-  }
-
-  async function handleResume(id: string, rows?: number, cols?: number) {
-    try {
-      setError(null);
-      await api.resumeSession(id, rows ?? 24, cols ?? 80);
     } catch (err) {
       setError(String(err));
     }
@@ -255,15 +254,6 @@ function App() {
     }
   }
 
-  async function handleSendMessage(id: string, message: string) {
-    try {
-      setError(null);
-      await api.sendMessage(id, message);
-    } catch (err) {
-      setError(String(err));
-    }
-  }
-
   return (
     <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A" }}>
       <Sidebar
@@ -284,9 +274,6 @@ function App() {
         onRemoveRepo={handleRemoveRepo}
         onDeleteTask={handleDeleteTask}
         onDeleteSession={handleDelete}
-        onStartSession={handleStart}
-        onStopSession={handleStop}
-        onResumeSession={handleResume}
       />
 
       <main className="flex-1 flex flex-col relative" style={{ backgroundColor: "#0A0A0A" }}>
@@ -317,11 +304,11 @@ function App() {
           <SessionPanel
             session={activeSession}
             task={activeTask}
-            onStart={handleStart}
             onStop={handleStop}
-            onResume={handleResume}
             onDelete={handleDelete}
             onClose={() => setActiveSessionId(null)}
+            onStart={handleStart}
+            onResume={handleResume}
           />
         ) : (
           <EmptyState />

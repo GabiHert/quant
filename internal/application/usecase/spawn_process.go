@@ -1,6 +1,6 @@
 package usecase
 
-// SpawnProcess defines the interface for managing Claude CLI processes.
+// SpawnProcess defines the interface for managing Claude CLI processes via PTY.
 type SpawnProcess interface {
 	Spawn(sessionID string, directory string, conversationID string, skipPermissions bool, rows uint16, cols uint16) (int, error)
 	Stop(sessionID string) error

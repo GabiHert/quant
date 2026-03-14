@@ -98,7 +98,7 @@ func (s *sessionManagerService) CreateSession(name string, description string, r
 	return &session, nil
 }
 
-// StartSession spawns a Claude process for the given session.
+// StartSession spawns claude in a PTY for an idle session.
 func (s *sessionManagerService) StartSession(id string, rows int, cols int) error {
 	session, err := s.findSession.FindByID(id)
 	if err != nil {
@@ -115,8 +115,38 @@ func (s *sessionManagerService) StartSession(id string, rows int, cols int) erro
 		return fmt.Errorf("failed to spawn process: %w", err)
 	}
 
-	session.PID = pid
 	session.Status = sessionstatus.Running
+	session.PID = pid
+	session.LastActiveAt = time.Now()
+	session.UpdatedAt = time.Now()
+
+	err = s.updateSession.Update(*session)
+	if err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	return nil
+}
+
+// ResumeSession resumes a paused session by re-spawning claude with --resume.
+func (s *sessionManagerService) ResumeSession(id string, rows int, cols int) error {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+
+	if session == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+
+	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
+	if err != nil {
+		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
+		return fmt.Errorf("failed to resume process: %w", err)
+	}
+
+	session.Status = sessionstatus.Running
+	session.PID = pid
 	session.LastActiveAt = time.Now()
 	session.UpdatedAt = time.Now()
 
@@ -147,36 +177,6 @@ func (s *sessionManagerService) StopSession(id string) error {
 	err = s.updateSession.UpdateStatus(id, sessionstatus.Paused)
 	if err != nil {
 		return fmt.Errorf("failed to update session status: %w", err)
-	}
-
-	return nil
-}
-
-// ResumeSession resumes a paused session by spawning a new Claude process with the existing conversation ID.
-func (s *sessionManagerService) ResumeSession(id string, rows int, cols int) error {
-	session, err := s.findSession.FindByID(id)
-	if err != nil {
-		return fmt.Errorf("failed to find session: %w", err)
-	}
-
-	if session == nil {
-		return fmt.Errorf("session not found: %s", id)
-	}
-
-	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
-	if err != nil {
-		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
-		return fmt.Errorf("failed to spawn process: %w", err)
-	}
-
-	session.PID = pid
-	session.Status = sessionstatus.Running
-	session.LastActiveAt = time.Now()
-	session.UpdatedAt = time.Now()
-
-	err = s.updateSession.Update(*session)
-	if err != nil {
-		return fmt.Errorf("failed to update session: %w", err)
 	}
 
 	return nil
@@ -254,7 +254,7 @@ func (s *sessionManagerService) GetSession(id string) (*entity.Session, error) {
 	return session, nil
 }
 
-// SendMessage sends a message to the Claude process for the given session.
+// SendMessage writes raw data to the PTY for the given session.
 func (s *sessionManagerService) SendMessage(id string, message string) error {
 	session, err := s.findSession.FindByID(id)
 	if err != nil {
@@ -265,19 +265,23 @@ func (s *sessionManagerService) SendMessage(id string, message string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 
-	if session.Status != sessionstatus.Running {
-		return fmt.Errorf("session is not running: %s", id)
-	}
-
 	err = s.spawnProcess.SendMessage(id, message)
 	if err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
+	session.LastActiveAt = time.Now()
+	session.UpdatedAt = time.Now()
+
+	err = s.updateSession.Update(*session)
+	if err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
 	return nil
 }
 
-// ResizeTerminal updates the PTY size for a running session.
+// ResizeTerminal resizes the PTY for the given session.
 func (s *sessionManagerService) ResizeTerminal(id string, rows int, cols int) error {
 	return s.spawnProcess.Resize(id, uint16(rows), uint16(cols))
 }

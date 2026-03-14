@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/creack/pty"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -15,13 +16,13 @@ import (
 	"quant/internal/integration/adapter"
 )
 
-// claudeProcess holds the running process and its PTY file.
+// claudeProcess holds the running process and its PTY master.
 type claudeProcess struct {
 	cmd *exec.Cmd
-	ptm *os.File // PTY master — read for output, write for input
+	ptm *os.File // PTY master
 }
 
-// processManager implements the adapter.ProcessManager interface using os/exec + PTY.
+// processManager implements the adapter.ProcessManager interface using PTY.
 type processManager struct {
 	ctx       context.Context
 	mu        sync.RWMutex
@@ -51,7 +52,7 @@ func (m *processManager) outputPath(sessionID string) string {
 	return filepath.Join(m.outputDir, sessionID+".log")
 }
 
-// Spawn starts a new Claude CLI process in a PTY in the given directory.
+// Spawn starts claude in a PTY and streams output to the frontend.
 func (m *processManager) Spawn(sessionID string, directory string, conversationID string, skipPermissions bool, rows uint16, cols uint16) (int, error) {
 	// Stop any existing process for this session.
 	m.mu.RLock()
@@ -73,41 +74,82 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 	cmd.Dir = directory
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
-	// Start the process in a PTY.
 	ptm, err := pty.Start(cmd)
 	if err != nil {
-		return 0, fmt.Errorf("failed to start claude process in pty: %w", err)
+		return 0, fmt.Errorf("failed to start claude in PTY: %w", err)
 	}
 
-	// Set PTY size from the frontend's terminal dimensions.
-	if rows == 0 {
-		rows = 24
-	}
-	if cols == 0 {
-		cols = 80
-	}
+	// Set initial PTY size.
 	_ = pty.Setsize(ptm, &pty.Winsize{Rows: rows, Cols: cols})
 
-	pid := cmd.Process.Pid
 	cp := &claudeProcess{cmd: cmd, ptm: ptm}
 
 	m.mu.Lock()
 	m.processes[sessionID] = cp
 	m.mu.Unlock()
 
-	// Open output file for appending.
+	pid := cmd.Process.Pid
+
+	// Open output file for appending raw terminal output.
 	outputFile, err := os.OpenFile(m.outputPath(sessionID), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		outputFile = nil // non-fatal, just skip persistence
 	}
 
-	// Stream PTY output to the Wails frontend and to disk.
-	go m.streamPTY(sessionID, ptm, outputFile)
-
-	// Monitor the process in a goroutine.
+	// Stream PTY output in a goroutine.
 	go func() {
+		buf := make([]byte, 32*1024)
+		var carry []byte // buffer for incomplete UTF-8 sequences at chunk boundaries
+
+		for {
+			n, readErr := ptm.Read(buf)
+			if n > 0 {
+				data := buf[:n]
+
+				// Prepend any carry from previous read.
+				if len(carry) > 0 {
+					data = append(carry, data...)
+					carry = nil
+				}
+
+				// Check for incomplete UTF-8 at the end.
+				// Find the last valid UTF-8 boundary.
+				validEnd := len(data)
+				for validEnd > 0 && !utf8.Valid(data[:validEnd]) {
+					validEnd--
+				}
+
+				// If the tail is an incomplete sequence, carry it over.
+				if validEnd < len(data) {
+					carry = make([]byte, len(data)-validEnd)
+					copy(carry, data[validEnd:])
+					data = data[:validEnd]
+				}
+
+				if len(data) > 0 {
+					// Write to disk for persistence.
+					if outputFile != nil {
+						_, _ = outputFile.Write(data)
+					}
+
+					// Send to frontend via Wails event.
+					if m.ctx != nil {
+						wailsRuntime.EventsEmit(m.ctx, "session:output", map[string]string{
+							"sessionId": sessionID,
+							"data":      string(data),
+						})
+					}
+				}
+			}
+
+			if readErr != nil {
+				break
+			}
+		}
+
+		// Wait for process to finish.
 		_ = cmd.Wait()
-		_ = ptm.Close()
+
 		if outputFile != nil {
 			_ = outputFile.Close()
 		}
@@ -116,39 +158,15 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 		delete(m.processes, sessionID)
 		m.mu.Unlock()
 
+		// Notify frontend that the process exited.
 		if m.ctx != nil {
-			wailsRuntime.EventsEmit(m.ctx, "session:exited", sessionID)
+			wailsRuntime.EventsEmit(m.ctx, "session:exited", map[string]string{
+				"sessionId": sessionID,
+			})
 		}
 	}()
 
 	return pid, nil
-}
-
-// streamPTY reads raw bytes from the PTY and sends them as Wails events + writes to disk.
-func (m *processManager) streamPTY(sessionID string, ptm *os.File, outputFile *os.File) {
-	buf := make([]byte, 4096)
-	for {
-		n, err := ptm.Read(buf)
-		if n > 0 {
-			data := buf[:n]
-
-			// Write to disk for persistence.
-			if outputFile != nil {
-				_, _ = outputFile.Write(data)
-			}
-
-			// Send to frontend via Wails event.
-			if m.ctx != nil {
-				wailsRuntime.EventsEmit(m.ctx, "session:output", map[string]string{
-					"sessionId": sessionID,
-					"data":      string(data),
-				})
-			}
-		}
-		if err != nil {
-			break
-		}
-	}
 }
 
 // Stop terminates a running Claude process by session ID.
@@ -161,17 +179,18 @@ func (m *processManager) Stop(sessionID string) error {
 		return fmt.Errorf("no process running for session: %s", sessionID)
 	}
 
+	// Close PTY master — this sends SIGHUP to the process.
+	_ = cp.ptm.Close()
+
+	// Also kill the process explicitly in case it doesn't respond to SIGHUP.
 	if cp.cmd.Process != nil {
-		err := cp.cmd.Process.Signal(os.Interrupt)
-		if err != nil {
-			return cp.cmd.Process.Kill()
-		}
+		_ = cp.cmd.Process.Kill()
 	}
 
 	return nil
 }
 
-// SendMessage sends raw data to a running Claude process via the PTY.
+// SendMessage writes raw data to the PTY (for terminal input).
 func (m *processManager) SendMessage(sessionID string, message string) error {
 	m.mu.RLock()
 	cp, exists := m.processes[sessionID]
@@ -181,19 +200,15 @@ func (m *processManager) SendMessage(sessionID string, message string) error {
 		return fmt.Errorf("no process running for session: %s", sessionID)
 	}
 
-	if cp.ptm == nil {
-		return fmt.Errorf("pty not available for session: %s", sessionID)
-	}
-
 	_, err := cp.ptm.Write([]byte(message))
 	if err != nil {
-		return fmt.Errorf("failed to write to pty: %w", err)
+		return fmt.Errorf("failed to write to PTY: %w", err)
 	}
 
 	return nil
 }
 
-// Resize updates the PTY window size for a running session.
+// Resize resizes the PTY for the given session.
 func (m *processManager) Resize(sessionID string, rows uint16, cols uint16) error {
 	m.mu.RLock()
 	cp, exists := m.processes[sessionID]
@@ -201,10 +216,6 @@ func (m *processManager) Resize(sessionID string, rows uint16, cols uint16) erro
 
 	if !exists {
 		return fmt.Errorf("no process running for session: %s", sessionID)
-	}
-
-	if cp.ptm == nil {
-		return fmt.Errorf("pty not available for session: %s", sessionID)
 	}
 
 	return pty.Setsize(cp.ptm, &pty.Winsize{Rows: rows, Cols: cols})

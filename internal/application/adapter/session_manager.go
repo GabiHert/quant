@@ -10,8 +10,8 @@ import (
 type SessionManager interface {
 	CreateSession(name string, description string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error)
 	StartSession(id string, rows int, cols int) error
-	StopSession(id string) error
 	ResumeSession(id string, rows int, cols int) error
+	StopSession(id string) error
 	DeleteSession(id string) error
 	ListSessions() ([]entity.Session, error)
 	ListSessionsByRepo(repoID string) ([]entity.Session, error)

@@ -13,8 +13,8 @@ type SessionController interface {
 	OnShutdown(ctx context.Context)
 	CreateSession(request dto.CreateSessionRequest) (*dto.SessionResponse, error)
 	StartSession(id string, rows int, cols int) error
-	StopSession(id string) error
 	ResumeSession(id string, rows int, cols int) error
+	StopSession(id string) error
 	DeleteSession(id string) error
 	ListSessions() ([]dto.SessionResponse, error)
 	ListSessionsByRepo(repoID string) ([]dto.SessionResponse, error)

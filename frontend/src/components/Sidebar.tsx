@@ -23,9 +23,6 @@ interface SidebarProps {
   onRemoveRepo: (repoId: string) => void;
   onDeleteTask: (taskId: string) => void;
   onDeleteSession: (sessionId: string) => void;
-  onStartSession: (sessionId: string) => void;
-  onStopSession: (sessionId: string) => void;
-  onResumeSession: (sessionId: string) => void;
 }
 
 export function Sidebar({
@@ -44,9 +41,6 @@ export function Sidebar({
   onRemoveRepo,
   onDeleteTask,
   onDeleteSession,
-  onStartSession,
-  onStopSession,
-  onResumeSession,
 }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -155,35 +149,6 @@ export function Sidebar({
       { type: "label", text: `// session [${session.status}]` },
     ];
 
-    // Status-dependent first action
-    if (session.status === "idle") {
-      items.push({
-        type: "item",
-        icon: "$",
-        iconColor: "#10B981",
-        label: "start",
-        onClick: () => onStartSession(session.id),
-      });
-    } else if (session.status === "running") {
-      items.push({
-        type: "item",
-        icon: "$",
-        iconColor: "#F59E0B",
-        label: "stop",
-        onClick: () => onStopSession(session.id),
-      });
-    } else if (session.status === "paused") {
-      items.push({
-        type: "item",
-        icon: "$",
-        iconColor: "#10B981",
-        label: "resume",
-        onClick: () => onResumeSession(session.id),
-      });
-    }
-    // Skip for "done" and "error"
-
-    items.push({ type: "separator" });
     items.push({
       type: "item",
       icon: "$",

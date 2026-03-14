@@ -83,6 +83,14 @@ export function createSession(req: CreateSessionRequest): Promise<Session> {
   return callGo(PKG, SESSION_CTRL, "CreateSession", req);
 }
 
+export function startSession(id: string, rows: number, cols: number): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "StartSession", id, rows, cols);
+}
+
+export function resumeSession(id: string, rows: number, cols: number): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "ResumeSession", id, rows, cols);
+}
+
 export function listSessionsByRepo(repoId: string): Promise<Session[]> {
   return callGo(PKG, SESSION_CTRL, "ListSessionsByRepo", repoId);
 }
@@ -95,16 +103,8 @@ export function getSession(id: string): Promise<Session> {
   return callGo(PKG, SESSION_CTRL, "GetSession", id);
 }
 
-export function startSession(id: string, rows: number, cols: number): Promise<void> {
-  return callGo(PKG, SESSION_CTRL, "StartSession", id, rows, cols);
-}
-
 export function stopSession(id: string): Promise<void> {
   return callGo(PKG, SESSION_CTRL, "StopSession", id);
-}
-
-export function resumeSession(id: string, rows: number, cols: number): Promise<void> {
-  return callGo(PKG, SESSION_CTRL, "ResumeSession", id, rows, cols);
 }
 
 export function deleteSession(id: string): Promise<void> {
