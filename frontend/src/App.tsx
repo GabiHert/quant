@@ -30,6 +30,7 @@ function App() {
   const [actionsBySession, setActionsBySession] = useState<Record<string, Action[]>>({});
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [transitionStatus, setTransitionStatus] = useState<Record<string, "starting" | "stopping" | "resuming">>({});
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [error, setError] = useState<string | null>(null);
 
@@ -199,27 +200,36 @@ function App() {
   async function handleStart(id: string, rows: number, cols: number) {
     try {
       setError(null);
+      setTransitionStatus((prev) => ({ ...prev, [id]: "starting" }));
       await api.startSession(id, rows, cols);
     } catch (err) {
       setError(String(err));
+    } finally {
+      setTransitionStatus((prev) => { const n = { ...prev }; delete n[id]; return n; });
     }
   }
 
   async function handleResume(id: string, rows: number, cols: number) {
     try {
       setError(null);
+      setTransitionStatus((prev) => ({ ...prev, [id]: "resuming" }));
       await api.resumeSession(id, rows, cols);
     } catch (err) {
       setError(String(err));
+    } finally {
+      setTransitionStatus((prev) => { const n = { ...prev }; delete n[id]; return n; });
     }
   }
 
   async function handleStop(id: string) {
     try {
       setError(null);
+      setTransitionStatus((prev) => ({ ...prev, [id]: "stopping" }));
       await api.stopSession(id);
     } catch (err) {
       setError(String(err));
+    } finally {
+      setTransitionStatus((prev) => { const n = { ...prev }; delete n[id]; return n; });
     }
   }
 
@@ -261,6 +271,7 @@ function App() {
         tasksByRepo={tasksByRepo}
         sessionsByRepo={sessionsByRepo}
         sessionsByTask={sessionsByTask}
+        transitionStatus={transitionStatus}
         actionsBySession={actionsBySession}
         activeSessionId={activeSessionId}
         expandedSessionId={expandedSessionId}

@@ -13,6 +13,7 @@ interface SidebarProps {
   sessionsByRepo: Record<string, Session[]>;
   sessionsByTask: Record<string, Session[]>;
   actionsBySession: Record<string, Action[]>;
+  transitionStatus: Record<string, "starting" | "stopping" | "resuming">;
   activeSessionId: string | null;
   expandedSessionId: string | null;
   onSelectSession: (id: string) => void;
@@ -31,6 +32,7 @@ export function Sidebar({
   sessionsByRepo,
   sessionsByTask,
   actionsBySession,
+  transitionStatus,
   activeSessionId,
   expandedSessionId,
   onSelectSession,
@@ -237,6 +239,7 @@ export function Sidebar({
             tasks={tasksByRepo[repo.id] ?? []}
             sessionsByTask={sessionsByTask}
             actionsBySession={actionsBySession}
+            transitionStatus={transitionStatus}
             activeSessionId={activeSessionId}
             expandedSessionId={expandedSessionId}
             onSelectSession={onSelectSession}
@@ -291,6 +294,7 @@ function RepoNode({
   tasks,
   sessionsByTask,
   actionsBySession,
+  transitionStatus,
   activeSessionId,
   expandedSessionId,
   onSelectSession,
@@ -306,6 +310,7 @@ function RepoNode({
   tasks: Task[];
   sessionsByTask: Record<string, Session[]>;
   actionsBySession: Record<string, Action[]>;
+  transitionStatus: Record<string, "starting" | "stopping" | "resuming">;
   activeSessionId: string | null;
   expandedSessionId: string | null;
   onSelectSession: (id: string) => void;
@@ -362,6 +367,7 @@ function RepoNode({
               task={task}
               sessions={sessionsByTask[task.id] ?? []}
               actionsBySession={actionsBySession}
+              transitionStatus={transitionStatus}
               activeSessionId={activeSessionId}
               expandedSessionId={expandedSessionId}
               onSelectSession={onSelectSession}
@@ -400,6 +406,7 @@ function TaskNode({
   task,
   sessions,
   actionsBySession,
+  transitionStatus,
   activeSessionId,
   expandedSessionId,
   onSelectSession,
@@ -411,6 +418,7 @@ function TaskNode({
   task: Task;
   sessions: Session[];
   actionsBySession: Record<string, Action[]>;
+  transitionStatus: Record<string, "starting" | "stopping" | "resuming">;
   activeSessionId: string | null;
   expandedSessionId: string | null;
   onSelectSession: (id: string) => void;
@@ -455,6 +463,7 @@ function TaskNode({
               key={session.id}
               session={session}
               actions={actionsBySession[session.id] ?? []}
+              displayStatus={transitionStatus[session.id] ?? session.status}
               activeSessionId={activeSessionId}
               expandedSessionId={expandedSessionId}
               onSelectSession={onSelectSession}
@@ -485,6 +494,7 @@ function TaskNode({
 function SessionNode({
   session,
   actions,
+  displayStatus,
   activeSessionId,
   expandedSessionId,
   onSelectSession,
@@ -494,6 +504,7 @@ function SessionNode({
 }: {
   session: Session;
   actions: Action[];
+  displayStatus: import("./StatusBadge").DisplayStatus;
   activeSessionId: string | null;
   expandedSessionId: string | null;
   onSelectSession: (id: string) => void;
@@ -527,7 +538,7 @@ function SessionNode({
           if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
         }}
       >
-        <StatusDot status={session.status} />
+        <StatusDot status={displayStatus} />
         <span
           className="overflow-hidden whitespace-nowrap flex-1"
           style={{
@@ -548,7 +559,7 @@ function SessionNode({
             wt
           </span>
         )}
-        <StatusBadge status={session.status} />
+        <StatusBadge status={displayStatus} />
       </button>
 
       {isExpanded && actions.length > 0 && (
