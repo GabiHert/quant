@@ -21,6 +21,7 @@ type SessionResponse struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
 	Description  string `json:"description"`
+	SessionType  string `json:"sessionType"`
 	Status       string `json:"status"`
 	Directory    string `json:"directory"`
 	WorktreePath string `json:"worktreePath"`
@@ -46,6 +47,7 @@ func SessionResponseFromEntity(session entity.Session) SessionResponse {
 		ID:           session.ID,
 		Name:         session.Name,
 		Description:  session.Description,
+		SessionType:  session.SessionType,
 		Status:       session.Status,
 		Directory:    session.Directory,
 		WorktreePath: session.WorktreePath,

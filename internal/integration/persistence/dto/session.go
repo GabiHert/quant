@@ -13,6 +13,7 @@ type SessionRow struct {
 	ID              string
 	Name            string
 	Description     sql.NullString
+	SessionType     string
 	Status          string
 	Directory       string
 	WorktreePath    sql.NullString
@@ -44,6 +45,7 @@ func (r SessionRow) ToEntity() entity.Session {
 		ID:              r.ID,
 		Name:            r.Name,
 		Description:     r.Description.String,
+		SessionType:     r.SessionType,
 		Status:          r.Status,
 		Directory:       r.Directory,
 		WorktreePath:    r.WorktreePath.String,
@@ -71,6 +73,7 @@ func SessionRowFromEntity(session entity.Session) SessionRow {
 		ID:              session.ID,
 		Name:            session.Name,
 		Description:     toNullString(session.Description),
+		SessionType:     session.SessionType,
 		Status:          session.Status,
 		Directory:       session.Directory,
 		WorktreePath:    toNullString(session.WorktreePath),

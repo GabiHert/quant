@@ -144,6 +144,10 @@ export function moveSessionToTask(sessionId: string, newTaskId: string): Promise
   return callGo(PKG, SESSION_CTRL, "MoveSessionToTask", sessionId, newTaskId);
 }
 
+export function renameSession(id: string, newName: string): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "RenameSession", id, newName);
+}
+
 // --- Actions ---
 
 const ACTION_CTRL = "actionController";

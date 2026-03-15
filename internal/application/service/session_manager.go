@@ -12,6 +12,7 @@ import (
 	"quant/internal/application/usecase"
 	"quant/internal/domain/entity"
 	"quant/internal/domain/enums/sessionstatus"
+	"quant/internal/domain/enums/sessiontype"
 )
 
 // sessionManagerService implements the adapter.SessionManager interface.
@@ -49,7 +50,7 @@ func NewSessionManagerService(
 
 // CreateSession creates a new session with the given parameters.
 // The directory is resolved from the repo's path.
-func (s *sessionManagerService) CreateSession(name string, description string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error) {
+func (s *sessionManagerService) CreateSession(name string, description string, sessionType string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error) {
 	repo, err := s.findRepo.FindRepoByID(repoID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find repo: %w", err)
@@ -78,6 +79,7 @@ func (s *sessionManagerService) CreateSession(name string, description string, r
 		ID:              uuid.New().String(),
 		Name:            name,
 		Description:     description,
+		SessionType:     sessionType,
 		Status:          sessionstatus.Idle,
 		Directory:       directory,
 		WorktreePath:    worktreePath,
@@ -109,7 +111,7 @@ func (s *sessionManagerService) StartSession(id string, rows int, cols int) erro
 		return fmt.Errorf("session not found: %s", id)
 	}
 
-	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
+	pid, err := s.spawnProcess.Spawn(session.ID, session.SessionType, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
 	if err != nil {
 		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
 		return fmt.Errorf("failed to spawn process: %w", err)
@@ -120,7 +122,7 @@ func (s *sessionManagerService) StartSession(id string, rows int, cols int) erro
 	session.LastActiveAt = time.Now()
 	session.UpdatedAt = time.Now()
 	// Store the session ID as ClaudeConvID so future resumes pass --resume with it.
-	if session.ClaudeConvID == "" {
+	if session.SessionType != sessiontype.Terminal && session.ClaudeConvID == "" {
 		session.ClaudeConvID = session.ID
 	}
 
@@ -143,7 +145,7 @@ func (s *sessionManagerService) ResumeSession(id string, rows int, cols int) err
 		return fmt.Errorf("session not found: %s", id)
 	}
 
-	pid, err := s.spawnProcess.Spawn(session.ID, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
+	pid, err := s.spawnProcess.Spawn(session.ID, session.SessionType, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
 	if err != nil {
 		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
 		return fmt.Errorf("failed to resume process: %w", err)
@@ -340,6 +342,20 @@ func (s *sessionManagerService) UpdateSessionTask(sessionID string, newTaskID st
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 	session.TaskID = newTaskID
+	session.UpdatedAt = time.Now()
+	return s.updateSession.Update(*session)
+}
+
+// RenameSession updates the name of a session.
+func (s *sessionManagerService) RenameSession(id string, newName string) error {
+	session, err := s.findSession.FindByID(id)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	session.Name = newName
 	session.UpdatedAt = time.Now()
 	return s.updateSession.Update(*session)
 }

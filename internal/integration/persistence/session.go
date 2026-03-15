@@ -21,13 +21,13 @@ func NewSessionPersistence(db *sql.DB) adapter.SessionPersistence {
 	return &sessionPersistence{db: db}
 }
 
-const sessionColumns = `id, name, description, status, directory, worktree_path, branch_name,
+const sessionColumns = `id, name, description, session_type, status, directory, worktree_path, branch_name,
 		claude_conv_id, pid, repo_id, task_id, skip_permissions, created_at, updated_at, last_active_at, archived_at`
 
 func scanSessionRow(scanner interface{ Scan(...any) error }) (pdto.SessionRow, error) {
 	var row pdto.SessionRow
 	err := scanner.Scan(
-		&row.ID, &row.Name, &row.Description, &row.Status, &row.Directory,
+		&row.ID, &row.Name, &row.Description, &row.SessionType, &row.Status, &row.Directory,
 		&row.WorktreePath, &row.BranchName, &row.ClaudeConvID, &row.PID,
 		&row.RepoID, &row.TaskID, &row.SkipPermissions, &row.CreatedAt, &row.UpdatedAt, &row.LastActiveAt,
 		&row.ArchivedAt,
@@ -134,12 +134,12 @@ func (p *sessionPersistence) FindByTaskID(taskID string) ([]entity.Session, erro
 func (p *sessionPersistence) Save(session entity.Session) error {
 	row := pdto.SessionRowFromEntity(session)
 
-	query := `INSERT INTO sessions (id, name, description, status, directory, worktree_path,
+	query := `INSERT INTO sessions (id, name, description, session_type, status, directory, worktree_path,
 		branch_name, claude_conv_id, pid, repo_id, task_id, skip_permissions, created_at, updated_at, last_active_at, archived_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := p.db.Exec(query,
-		row.ID, row.Name, row.Description, row.Status, row.Directory,
+		row.ID, row.Name, row.Description, row.SessionType, row.Status, row.Directory,
 		row.WorktreePath, row.BranchName, row.ClaudeConvID, row.PID,
 		row.RepoID, row.TaskID, row.SkipPermissions,
 		row.CreatedAt, row.UpdatedAt, row.LastActiveAt, row.ArchivedAt,

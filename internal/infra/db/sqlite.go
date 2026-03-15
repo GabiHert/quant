@@ -124,6 +124,7 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN skip_permissions INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE sessions ADD COLUMN archived_at TEXT`,
 		`ALTER TABLE tasks ADD COLUMN archived_at TEXT`,
+		`ALTER TABLE sessions ADD COLUMN session_type TEXT NOT NULL DEFAULT 'claude'`,
 	}
 	for _, stmt := range alterStatements {
 		// Ignore errors from ALTER TABLE since the column may already exist.

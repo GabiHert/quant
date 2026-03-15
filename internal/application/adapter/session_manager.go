@@ -8,7 +8,7 @@ import (
 // SessionManager defines the service interface for session management operations.
 // This is the application adapter that the sessionManagerService implements.
 type SessionManager interface {
-	CreateSession(name string, description string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error)
+	CreateSession(name string, description string, sessionType string, repoID string, taskID string, useWorktree bool, skipPermissions bool) (*entity.Session, error)
 	StartSession(id string, rows int, cols int) error
 	ResumeSession(id string, rows int, cols int) error
 	StopSession(id string) error
@@ -23,4 +23,5 @@ type SessionManager interface {
 	ResizeTerminal(id string, rows int, cols int) error
 	GetSessionOutput(id string) (string, error)
 	UpdateSessionTask(sessionID string, newTaskID string) error
+	RenameSession(id string, newName string) error
 }

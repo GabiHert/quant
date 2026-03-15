@@ -222,6 +222,7 @@ export namespace dto {
 	    id: string;
 	    name: string;
 	    description: string;
+	    sessionType: string;
 	    status: string;
 	    directory: string;
 	    worktreePath: string;
@@ -244,6 +245,7 @@ export namespace dto {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.description = source["description"];
+	        this.sessionType = source["sessionType"];
 	        this.status = source["status"];
 	        this.directory = source["directory"];
 	        this.worktreePath = source["worktreePath"];

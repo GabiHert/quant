@@ -36,7 +36,7 @@ func (c *sessionController) OnShutdown(_ context.Context) {
 
 // CreateSession creates a new session and returns its response DTO.
 func (c *sessionController) CreateSession(request dto.CreateSessionRequest) (*dto.SessionResponse, error) {
-	session, err := c.sessionManager.CreateSession(request.Name, request.Description, request.RepoID, request.TaskID, request.UseWorktree, request.SkipPermissions)
+	session, err := c.sessionManager.CreateSession(request.Name, request.Description, request.SessionType, request.RepoID, request.TaskID, request.UseWorktree, request.SkipPermissions)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +127,11 @@ func (c *sessionController) ResizeTerminal(id string, rows int, cols int) error 
 // MoveSessionToTask moves a session to a different task.
 func (c *sessionController) MoveSessionToTask(sessionID string, newTaskID string) error {
 	return c.sessionManager.UpdateSessionTask(sessionID, newTaskID)
+}
+
+// RenameSession updates the name of a session.
+func (c *sessionController) RenameSession(id string, newName string) error {
+	return c.sessionManager.RenameSession(id, newName)
 }
 
 // GetSessionOutput returns the persisted output for a session.

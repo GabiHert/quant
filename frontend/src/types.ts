@@ -20,6 +20,7 @@ export interface Session {
   id: string;
   name: string;
   description: string;
+  sessionType: SessionType;
   status: "idle" | "running" | "paused" | "done" | "error";
   repoId: string;
   taskId: string;

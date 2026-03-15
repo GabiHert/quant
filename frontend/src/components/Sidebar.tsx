@@ -30,6 +30,7 @@ interface SidebarProps {
   onUnarchiveSession: (sessionId: string) => void;
   onArchiveTask: (taskId: string) => void;
   onUnarchiveTask: (taskId: string) => void;
+  onRenameSession?: (sessionId: string, currentName: string) => void;
   onMoveSession?: (sessionId: string, repoId: string) => void;
   onDoubleClickSession?: (id: string) => void;
   onDropSession?: (sessionId: string, targetTaskId: string) => void;
@@ -60,6 +61,7 @@ export function Sidebar({
   onUnarchiveSession,
   onArchiveTask,
   onUnarchiveTask,
+  onRenameSession,
   onMoveSession,
   onDoubleClickSession,
   onDropSession,
@@ -235,7 +237,7 @@ export function Sidebar({
         icon: "$",
         iconColor: "#6B7280",
         label: "rename",
-        onClick: () => console.log("TODO: rename session", session.id),
+        onClick: () => onRenameSession?.(session.id, session.name),
       });
 
       // Only show "move to task" if there are >= 2 tasks in the repo
@@ -861,7 +863,19 @@ function SessionNode({
             wt
           </span>
         )}
-        <StatusBadge status={displayStatus} />
+        {session.sessionType === "terminal" ? (
+          <span
+            className="shrink-0 text-[8px] px-1"
+            style={{
+              color: "#A855F7",
+              border: "1px solid #A855F7",
+            }}
+          >
+            sh
+          </span>
+        ) : (
+          <StatusBadge status={displayStatus} />
+        )}
       </button>
 
       {isExpanded && actions.length > 0 && (

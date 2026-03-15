@@ -46,6 +46,10 @@ export function OnStartup(arg1) {
   return window['go']['controller']['sessionController']['OnStartup'](arg1);
 }
 
+export function RenameSession(arg1, arg2) {
+  return window['go']['controller']['sessionController']['RenameSession'](arg1, arg2);
+}
+
 export function ResizeTerminal(arg1, arg2, arg3) {
   return window['go']['controller']['sessionController']['ResizeTerminal'](arg1, arg2, arg3);
 }

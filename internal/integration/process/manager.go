@@ -53,8 +53,9 @@ func (m *processManager) outputPath(sessionID string) string {
 	return filepath.Join(m.outputDir, sessionID+".log")
 }
 
-// Spawn starts claude in a PTY and streams output to the frontend.
-func (m *processManager) Spawn(sessionID string, directory string, conversationID string, skipPermissions bool, rows uint16, cols uint16) (int, error) {
+// Spawn starts a process in a PTY and streams output to the frontend.
+// For "claude" sessions it launches the Claude CLI; for "terminal" sessions it launches a shell.
+func (m *processManager) Spawn(sessionID string, sessionType string, directory string, conversationID string, skipPermissions bool, rows uint16, cols uint16) (int, error) {
 	// Stop any existing process for this session.
 	m.mu.RLock()
 	_, exists := m.processes[sessionID]
@@ -63,18 +64,28 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 		_ = m.Stop(sessionID)
 	}
 
-	args := []string{}
-	if conversationID != "" {
-		args = append(args, "--resume", conversationID)
+	var cmd *exec.Cmd
+
+	if sessionType == "terminal" {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/zsh"
+		}
+		cmd = exec.Command(shell, "-l")
 	} else {
-		// First start: use our session ID as Claude's session ID so we can resume later.
-		args = append(args, "--session-id", sessionID)
-	}
-	if skipPermissions {
-		args = append(args, "--dangerously-skip-permissions")
+		args := []string{}
+		if conversationID != "" {
+			args = append(args, "--resume", conversationID)
+		} else {
+			// First start: use our session ID as Claude's session ID so we can resume later.
+			args = append(args, "--session-id", sessionID)
+		}
+		if skipPermissions {
+			args = append(args, "--dangerously-skip-permissions")
+		}
+		cmd = exec.Command("claude", args...)
 	}
 
-	cmd := exec.Command("claude", args...)
 	cmd.Dir = directory
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
@@ -173,12 +184,12 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 
 		// If the process exited because the conversation ID doesn't exist,
 		// automatically respawn with --session-id (fresh start) instead of --resume.
-		if conversationID != "" && strings.Contains(string(allOutput), "No conversation found") {
+		if sessionType != "terminal" && conversationID != "" && strings.Contains(string(allOutput), "No conversation found") {
 			// Truncate the error output so it doesn't persist.
 			_ = os.Truncate(m.outputPath(sessionID), 0)
 
 			// Respawn fresh with --session-id.
-			newPid, err := m.Spawn(sessionID, directory, "", skipPermissions, rows, cols)
+			newPid, err := m.Spawn(sessionID, sessionType, directory, "", skipPermissions, rows, cols)
 			if err == nil && m.ctx != nil {
 				// Notify frontend of the new PID via a restart event.
 				wailsRuntime.EventsEmit(m.ctx, "session:restarted", map[string]interface{}{
