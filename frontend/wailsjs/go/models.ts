@@ -101,6 +101,7 @@ export namespace dto {
 	    description: string;
 	    repoId: string;
 	    taskId: string;
+	    sessionType: string;
 	    useWorktree: boolean;
 	    skipPermissions: boolean;
 	
@@ -114,6 +115,7 @@ export namespace dto {
 	        this.description = source["description"];
 	        this.repoId = source["repoId"];
 	        this.taskId = source["taskId"];
+	        this.sessionType = source["sessionType"];
 	        this.useWorktree = source["useWorktree"];
 	        this.skipPermissions = source["skipPermissions"];
 	    }

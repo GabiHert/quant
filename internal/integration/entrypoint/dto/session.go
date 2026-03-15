@@ -11,6 +11,7 @@ type CreateSessionRequest struct {
 	Description     string `json:"description"`
 	RepoID          string `json:"repoId"`
 	TaskID          string `json:"taskId"`
+	SessionType     string `json:"sessionType"`
 	UseWorktree     bool   `json:"useWorktree"`
 	SkipPermissions bool   `json:"skipPermissions"`
 }

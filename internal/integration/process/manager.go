@@ -65,6 +65,9 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 	args := []string{}
 	if conversationID != "" {
 		args = append(args, "--resume", conversationID)
+	} else {
+		// First start: use our session ID as Claude's session ID so we can resume later.
+		args = append(args, "--session-id", sessionID)
 	}
 	if skipPermissions {
 		args = append(args, "--dangerously-skip-permissions")
@@ -90,8 +93,14 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 
 	pid := cmd.Process.Pid
 
-	// Open output file for appending raw terminal output.
-	outputFile, err := os.OpenFile(m.outputPath(sessionID), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// Open output file. Truncate on resume since Claude re-renders conversation history.
+	flags := os.O_CREATE | os.O_WRONLY
+	if conversationID != "" {
+		flags |= os.O_TRUNC
+	} else {
+		flags |= os.O_APPEND
+	}
+	outputFile, err := os.OpenFile(m.outputPath(sessionID), flags, 0644)
 	if err != nil {
 		outputFile = nil // non-fatal, just skip persistence
 	}

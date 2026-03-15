@@ -452,9 +452,7 @@ function App() {
     }
   }
 
-  // Double-click handler: open tab, and if idle/paused the SessionPanel auto-handles start.
-  // For idle sessions, opening the tab is enough (SessionPanel auto-starts idle sessions).
-  // For paused sessions, we just open the tab — user can click resume in the panel.
+  // Double-click handler: open tab. SessionPanel auto-starts idle and auto-resumes paused sessions.
   function handleDoubleClickSession(id: string) {
     handleOpenTab(id);
   }

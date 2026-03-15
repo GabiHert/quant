@@ -61,11 +61,14 @@ export interface CreateTaskRequest {
   name: string;
 }
 
+export type SessionType = "claude" | "terminal";
+
 export interface CreateSessionRequest {
   name: string;
   description: string;
   repoId: string;
   taskId?: string;
+  sessionType: SessionType;
   useWorktree?: boolean;
   skipPermissions?: boolean;
 }

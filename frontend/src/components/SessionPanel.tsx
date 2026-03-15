@@ -180,8 +180,9 @@ export function SessionPanel({
       }
     );
 
-    // Replay saved output for paused/running sessions.
-    if (session.status === "paused" || session.status === "running") {
+    // Replay saved output for running sessions only.
+    // Paused sessions skip replay because auto-resume will cause Claude to re-render conversation history.
+    if (session.status === "running") {
       api
         .getSessionOutput(session.id)
         .then((output) => {
@@ -192,15 +193,19 @@ export function SessionPanel({
         .catch(() => {});
     }
 
-    // Auto-start idle sessions after terminal is mounted (so we have real rows/cols).
-    if (session.status === "idle") {
+    // Auto-start idle sessions or auto-resume paused sessions after terminal is mounted.
+    if (session.status === "idle" || session.status === "paused") {
       // Small delay to let fit complete.
       const timer = setTimeout(() => {
         if (!startedRef.current && termRef.current && fitAddonRef.current) {
           startedRef.current = true;
           fitAddonRef.current.fit();
           const { rows, cols } = termRef.current;
-          onStart(session.id, rows, cols);
+          if (session.status === "idle") {
+            onStart(session.id, rows, cols);
+          } else {
+            onResume(session.id, rows, cols);
+          }
         }
       }, 100);
       return () => {

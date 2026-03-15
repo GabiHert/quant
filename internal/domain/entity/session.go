@@ -5,11 +5,12 @@ import (
 	"time"
 )
 
-// Session represents a Claude Code working session.
+// Session represents a working session (Claude or terminal).
 type Session struct {
 	ID              string
 	Name            string
 	Description     string
+	SessionType     string // "claude" or "terminal"
 	Status          string
 	Directory       string
 	WorktreePath    string

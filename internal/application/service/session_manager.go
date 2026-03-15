@@ -119,6 +119,10 @@ func (s *sessionManagerService) StartSession(id string, rows int, cols int) erro
 	session.PID = pid
 	session.LastActiveAt = time.Now()
 	session.UpdatedAt = time.Now()
+	// Store the session ID as ClaudeConvID so future resumes pass --resume with it.
+	if session.ClaudeConvID == "" {
+		session.ClaudeConvID = session.ID
+	}
 
 	err = s.updateSession.Update(*session)
 	if err != nil {
