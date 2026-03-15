@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"text/template"
+
+	"quant/internal/application/usecase"
 )
 
 const (
@@ -29,8 +31,22 @@ var plistTemplate = template.Must(template.New("plist").Parse(`<?xml version="1.
 </plist>
 `))
 
-// SetEnabled enables or disables the LaunchAgent for start-on-login.
-func SetEnabled(enabled bool) error {
+// manager implements the usecase.SetLoginItem interface.
+type manager struct{}
+
+// NewManager creates a new login item manager.
+// Returns the usecase.SetLoginItem interface, not the concrete type.
+func NewManager() usecase.SetLoginItem {
+	return &manager{}
+}
+
+// SetLoginItem enables or disables the LaunchAgent for start-on-login.
+func (m *manager) SetLoginItem(enabled bool) error {
+	return setEnabled(enabled)
+}
+
+// setEnabled enables or disables the LaunchAgent for start-on-login.
+func setEnabled(enabled bool) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)

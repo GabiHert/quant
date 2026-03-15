@@ -16,6 +16,8 @@ type configManagerService struct {
 	resetDatabase    usecase.ResetDatabase
 	clearSessionLogs usecase.ClearSessionLogs
 	getDatabasePath  usecase.GetDatabasePath
+	setLoginItem     usecase.SetLoginItem
+	sendNotification usecase.SendNotification
 }
 
 // NewConfigManagerService creates a new ConfigManager service.
@@ -26,6 +28,8 @@ func NewConfigManagerService(
 	resetDatabase usecase.ResetDatabase,
 	clearSessionLogs usecase.ClearSessionLogs,
 	getDatabasePath usecase.GetDatabasePath,
+	setLoginItem usecase.SetLoginItem,
+	sendNotification usecase.SendNotification,
 ) adapter.ConfigManager {
 	return &configManagerService{
 		loadConfig:       loadConfig,
@@ -33,6 +37,8 @@ func NewConfigManagerService(
 		resetDatabase:    resetDatabase,
 		clearSessionLogs: clearSessionLogs,
 		getDatabasePath:  getDatabasePath,
+		setLoginItem:     setLoginItem,
+		sendNotification: sendNotification,
 	}
 }
 
@@ -46,11 +52,15 @@ func (s *configManagerService) GetConfig() (*entity.Config, error) {
 	return cfg, nil
 }
 
-// SaveConfig persists the given configuration.
+// SaveConfig persists the given configuration and applies side effects for general settings.
 func (s *configManagerService) SaveConfig(cfg *entity.Config) error {
 	err := s.saveConfig.SaveConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	if err := s.setLoginItem.SetLoginItem(cfg.StartOnLogin); err != nil {
+		return fmt.Errorf("failed to set login item: %w", err)
 	}
 
 	return nil
@@ -79,4 +89,9 @@ func (s *configManagerService) ClearSessionLogs() error {
 // GetDatabasePath returns the file path to the database.
 func (s *configManagerService) GetDatabasePath() string {
 	return s.getDatabasePath.GetDatabasePath()
+}
+
+// SendNotification sends a system notification with the given title and message.
+func (s *configManagerService) SendNotification(title, message string) error {
+	return s.sendNotification.SendNotification(title, message)
 }

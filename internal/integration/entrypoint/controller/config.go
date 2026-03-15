@@ -77,3 +77,8 @@ func (c *configController) BrowseDirectory() (string, error) {
 func (c *configController) GetDatabasePath() string {
 	return c.configManager.GetDatabasePath()
 }
+
+// SendNotification sends a system notification with the given title and message.
+func (c *configController) SendNotification(title, message string) error {
+	return c.configManager.SendNotification(title, message)
+}

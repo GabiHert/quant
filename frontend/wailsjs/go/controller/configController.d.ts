@@ -18,3 +18,5 @@ export function OnStartup(arg1:context.Context):Promise<void>;
 export function ResetDatabase():Promise<void>;
 
 export function SaveConfig(arg1:dto.SaveConfigRequest):Promise<void>;
+
+export function SendNotification(arg1:string,arg2:string):Promise<void>;

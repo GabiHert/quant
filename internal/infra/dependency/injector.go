@@ -8,6 +8,8 @@ import (
 	"quant/internal/application/service"
 	intAdapter "quant/internal/integration/adapter"
 	"quant/internal/integration/entrypoint/controller"
+	"quant/internal/integration/loginitem"
+	"quant/internal/integration/notification"
 	"quant/internal/integration/persistence"
 	"quant/internal/integration/process"
 	"quant/internal/integration/worktree"
@@ -207,11 +209,13 @@ func (i *Injector) ConfigManager() appAdapter.ConfigManager {
 		cp := i.ConfigPersistence()
 		dm := i.DatabaseManager()
 		i.configManager = service.NewConfigManagerService(
-			cp, // LoadConfig
-			cp, // SaveConfig
-			dm, // ResetDatabase
-			dm, // ClearSessionLogs
-			dm, // GetDatabasePath
+			cp,                        // LoadConfig
+			cp,                        // SaveConfig
+			dm,                        // ResetDatabase
+			dm,                        // ClearSessionLogs
+			dm,                        // GetDatabasePath
+			loginitem.NewManager(),    // SetLoginItem
+			notification.NewManager(), // SendNotification
 		)
 	}
 	return i.configManager

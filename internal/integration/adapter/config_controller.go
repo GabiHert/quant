@@ -17,4 +17,5 @@ type ConfigController interface {
 	ClearSessionLogs() error
 	BrowseDirectory() (string, error)
 	GetDatabasePath() string
+	SendNotification(title, message string) error
 }

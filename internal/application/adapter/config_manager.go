@@ -13,4 +13,5 @@ type ConfigManager interface {
 	ResetDatabase() error
 	ClearSessionLogs() error
 	GetDatabasePath() string
+	SendNotification(title, message string) error
 }

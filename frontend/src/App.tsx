@@ -50,6 +50,8 @@ function App() {
   const outputTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
+  const toastIdRef = useRef(0);
 
   // keep refs for polling callbacks
   const activeTabIdRef = useRef(activeTabId);
@@ -188,33 +190,83 @@ function App() {
 
     const cancel = w.runtime.EventsOn("session:output", (data: { sessionId: string; data: string }) => {
       const id = data.sessionId;
+      if (!data.data) return;
 
-      // Ignore tiny output bursts (cursor blink, status bar updates).
-      // Only mark as "running" if we receive meaningful content (>20 bytes).
-      if (!data.data || data.data.length < 20) return;
+      // Only treat large output chunks as Claude responding.
+      // User typing echoes are small (< 100 bytes per chunk even with ANSI codes).
+      // Claude streaming response chunks are typically 100+ bytes each.
+      const isLargeChunk = data.data.length >= 100;
 
-      // Mark session as actively outputting
-      setActiveOutputIds((prev) => {
-        if (prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-
-      // After 3s of quiet, mark as "waiting"
-      if (outputTimers.current[id]) clearTimeout(outputTimers.current[id]);
-      outputTimers.current[id] = setTimeout(() => {
+      if (isLargeChunk) {
         setActiveOutputIds((prev) => {
-          if (!prev.has(id)) return prev;
+          if (prev.has(id)) return prev;
           const next = new Set(prev);
-          next.delete(id);
+          next.add(id);
           return next;
         });
-      }, 3000);
+      }
+
+      // Only reset the quiet timer on large chunks (Claude output).
+      // Small chunks (user typing) should not extend the "active" window.
+      if (isLargeChunk) {
+        if (outputTimers.current[id]) clearTimeout(outputTimers.current[id]);
+        outputTimers.current[id] = setTimeout(() => {
+          setActiveOutputIds((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        }, 3000);
+      }
     });
 
     return () => { if (cancel) cancel(); };
   }, []);
+
+  // Send notification when a session finishes responding and user is not viewing it.
+  // Only notify once per active→quiet transition by tracking which sessions we already notified.
+  const prevActiveOutputIdsRef = useRef<Set<string>>(new Set());
+  const notifiedSessionsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const prev = prevActiveOutputIdsRef.current;
+
+    // Mark newly active sessions as eligible for notification again
+    for (const id of activeOutputIds) {
+      if (!prev.has(id)) {
+        notifiedSessionsRef.current.delete(id);
+      }
+    }
+
+    // Notify for sessions that just went from active to quiet
+    for (const id of prev) {
+      if (!activeOutputIds.has(id) && activeTabIdRef.current !== id && !notifiedSessionsRef.current.has(id)) {
+        notifiedSessionsRef.current.add(id);
+        (async () => {
+          try {
+            const cfg = await api.getConfig();
+            if (!cfg.notifications) return;
+
+            const session = findSession(id, sessionsByRepo, sessionsByTask);
+            const name = session?.name ?? id;
+
+            // In-app toast notification
+            const toastId = ++toastIdRef.current;
+            setToasts((prev) => [...prev, { id: toastId, message: `session "${name}" has finished` }]);
+            setTimeout(() => {
+              setToasts((prev) => prev.filter((t) => t.id !== toastId));
+            }, 5000);
+
+            // Also try native macOS notification via backend
+            api.sendNotification("quant", `session "${name}" has finished`).catch(() => {});
+          } catch {
+            // notification is best-effort
+          }
+        })();
+      }
+    }
+    prevActiveOutputIdsRef.current = new Set(activeOutputIds);
+  }, [activeOutputIds, sessionsByRepo, sessionsByTask]);
 
   // Compute display status for a session
   function getDisplayStatus(sessionId: string, baseStatus: Session["status"]): import("./components/StatusBadge").DisplayStatus {
@@ -623,6 +675,41 @@ function App() {
           onConfirm={modal.onConfirm}
           onCancel={() => setModal({ type: "none" })}
         />
+      )}
+
+      {/* Toast notifications */}
+      {toasts.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+        >
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              style={{
+                backgroundColor: "#1F1F1F",
+                border: "1px solid #10B981",
+                color: "#FAFAFA",
+                fontSize: 12,
+                padding: "10px 16px",
+                borderRadius: 4,
+                maxWidth: 320,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+              }}
+            >
+              <span style={{ color: "#10B981", marginRight: 8 }}>~</span>
+              {toast.message}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

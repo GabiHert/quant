@@ -175,3 +175,7 @@ export function clearSessionLogs(): Promise<void> {
 export function browseConfigDirectory(): Promise<string> {
   return callGo(PKG, CONFIG_CTRL, "BrowseDirectory");
 }
+
+export function sendNotification(title: string, message: string): Promise<void> {
+  return callGo(PKG, CONFIG_CTRL, "SendNotification", title, message);
+}

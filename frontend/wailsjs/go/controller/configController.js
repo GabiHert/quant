@@ -33,3 +33,7 @@ export function ResetDatabase() {
 export function SaveConfig(arg1) {
   return window['go']['controller']['configController']['SaveConfig'](arg1);
 }
+
+export function SendNotification(arg1, arg2) {
+  return window['go']['controller']['configController']['SendNotification'](arg1, arg2);
+}
