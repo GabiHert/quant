@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -108,7 +109,8 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 	// Stream PTY output in a goroutine.
 	go func() {
 		buf := make([]byte, 32*1024)
-		var carry []byte // buffer for incomplete UTF-8 sequences at chunk boundaries
+		var carry []byte     // buffer for incomplete UTF-8 sequences at chunk boundaries
+		var allOutput []byte // collect output to detect errors after exit
 
 		for {
 			n, readErr := ptm.Read(buf)
@@ -136,6 +138,8 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 				}
 
 				if len(data) > 0 {
+					allOutput = append(allOutput, data...)
+
 					// Write to disk for persistence.
 					if outputFile != nil {
 						_, _ = outputFile.Write(data)
@@ -166,6 +170,24 @@ func (m *processManager) Spawn(sessionID string, directory string, conversationI
 		m.mu.Lock()
 		delete(m.processes, sessionID)
 		m.mu.Unlock()
+
+		// If the process exited because the conversation ID doesn't exist,
+		// automatically respawn with --session-id (fresh start) instead of --resume.
+		if conversationID != "" && strings.Contains(string(allOutput), "No conversation found") {
+			// Truncate the error output so it doesn't persist.
+			_ = os.Truncate(m.outputPath(sessionID), 0)
+
+			// Respawn fresh with --session-id.
+			newPid, err := m.Spawn(sessionID, directory, "", skipPermissions, rows, cols)
+			if err == nil && m.ctx != nil {
+				// Notify frontend of the new PID via a restart event.
+				wailsRuntime.EventsEmit(m.ctx, "session:restarted", map[string]interface{}{
+					"sessionId": sessionID,
+					"pid":       newPid,
+				})
+			}
+			return
+		}
 
 		// Notify frontend that the process exited.
 		if m.ctx != nil {

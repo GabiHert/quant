@@ -192,9 +192,8 @@ function App() {
       const id = data.sessionId;
       if (!data.data) return;
 
-      // Only treat large output chunks as Claude responding.
-      // User typing echoes are small (< 100 bytes per chunk even with ANSI codes).
-      // Claude streaming response chunks are typically 100+ bytes each.
+      // Large chunks (>= 100 bytes) activate "running" status.
+      // User typing echoes are small; Claude response chunks are large.
       const isLargeChunk = data.data.length >= 100;
 
       if (isLargeChunk) {
@@ -206,8 +205,28 @@ function App() {
         });
       }
 
-      // Only reset the quiet timer on large chunks (Claude output).
-      // Small chunks (user typing) should not extend the "active" window.
+      // Once a session is active, ANY output (including small chunks like
+      // "Sketching...", status bar updates, ANSI escape sequences) keeps the
+      // quiet timer alive. This prevents false "waiting" status while Claude
+      // is still working but outputting small chunks.
+      // Only large chunks can start the timer (activate status), but once
+      // active, all output resets it.
+      setActiveOutputIds((prev) => {
+        if (!prev.has(id)) return prev; // not active, ignore small chunks
+        // Session is active — reset the quiet timer on any output
+        if (outputTimers.current[id]) clearTimeout(outputTimers.current[id]);
+        outputTimers.current[id] = setTimeout(() => {
+          setActiveOutputIds((p) => {
+            if (!p.has(id)) return p;
+            const next = new Set(p);
+            next.delete(id);
+            return next;
+          });
+        }, 5000);
+        return prev;
+      });
+
+      // For large chunks, also set the timer (handles initial activation)
       if (isLargeChunk) {
         if (outputTimers.current[id]) clearTimeout(outputTimers.current[id]);
         outputTimers.current[id] = setTimeout(() => {
@@ -217,7 +236,7 @@ function App() {
             next.delete(id);
             return next;
           });
-        }, 3000);
+        }, 5000);
       }
     });
 
