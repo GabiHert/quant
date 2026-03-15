@@ -30,6 +30,7 @@ interface SidebarProps {
   onDoubleClickSession?: (id: string) => void;
   onDropSession?: (sessionId: string, targetTaskId: string) => void;
   onError?: (msg: string) => void;
+  onOpenSettings?: () => void;
 }
 
 export function Sidebar({
@@ -55,6 +56,7 @@ export function Sidebar({
   onDoubleClickSession,
   onDropSession,
   onError,
+  onOpenSettings,
 }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -279,14 +281,14 @@ export function Sidebar({
       </nav>
 
       {/* bottom bar */}
-      <div className="p-3" style={{ borderTop: "1px solid #2a2a2a" }}>
+      <div className="flex items-center gap-2 p-3" style={{ borderTop: "1px solid #2a2a2a" }}>
         <button
           onClick={() => {
             if (repos.length > 0) {
               onCreateSession(repos[0].id);
             }
           }}
-          className="w-full flex items-center justify-center gap-1 px-3 py-2 text-sm lowercase transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm lowercase transition-colors"
           style={{
             backgroundColor: "#10B981",
             color: "#0A0A0A",
@@ -298,6 +300,24 @@ export function Sidebar({
         >
           $ new_session
         </button>
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            className="flex items-center justify-center shrink-0 transition-colors"
+            style={{
+              width: 36,
+              height: 36,
+              color: "#6B7280",
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 16,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+            title="settings"
+          >
+            *
+          </button>
+        )}
       </div>
 
       {/* context menu overlay */}
