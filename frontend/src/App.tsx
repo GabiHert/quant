@@ -355,7 +355,10 @@ function App() {
     }
   }
 
+  const creatingSessionRef = useRef(false);
   async function handleCreateSession(req: CreateSessionRequest) {
+    if (creatingSessionRef.current) return;
+    creatingSessionRef.current = true;
     try {
       setError(null);
       const session = await api.createSession(req);
@@ -367,6 +370,8 @@ function App() {
       // Session is created idle; terminal auto-starts it via onStart
     } catch (err) {
       setError(String(err));
+    } finally {
+      creatingSessionRef.current = false;
     }
   }
 
