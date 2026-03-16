@@ -106,19 +106,6 @@ export function SessionPanel({
     termRef.current = term;
 
     if (!isArchived) {
-      // Intercept keyboard for new line shortcut.
-      const newLineKey = cfg?.newLineKey ?? "backslash+enter";
-      if (newLineKey === "shift+enter") {
-        term.attachCustomKeyEventHandler((e) => {
-          if (e.type === "keydown" && e.key === "Enter" && e.shiftKey) {
-            // Send newline character to PTY
-            api.sendMessage(sessionIdRef.current, "\n").catch(() => {});
-            return false; // prevent default enter handling
-          }
-          return true;
-        });
-      }
-
       // Send keystrokes to PTY via backend.
       term.onData((data) => {
         api.sendMessage(sessionIdRef.current, data).catch(() => {});
@@ -158,7 +145,9 @@ export function SessionPanel({
   }, [isArchived, termConfig]);
 
   // Initialize terminal and set up event listeners.
+  // Wait for config to load before initializing so terminal settings are applied.
   useEffect(() => {
+    if (!termConfig) return;
     const term = initTerminal();
     if (!term) return;
 
@@ -268,7 +257,8 @@ export function SessionPanel({
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.id, isArchived]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id, isArchived, termConfig]);
 
   // Handle container resize via ResizeObserver.
   useEffect(() => {

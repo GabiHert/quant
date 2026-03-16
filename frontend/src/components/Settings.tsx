@@ -15,7 +15,6 @@ const NAV_ITEMS: { key: SettingsTab; label: string; icon: string }[] = [
 
 const FONT_OPTIONS = ["JetBrains Mono", "Fira Code", "Source Code Pro", "Cascadia Code", "Menlo", "Monaco", "Consolas"];
 const CURSOR_OPTIONS = ["block", "underline", "bar"];
-const NEWLINE_OPTIONS = ["backslash+enter", "shift+enter"];
 const MODEL_OPTIONS = ["cli default", "claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"];
 
 interface Props {
@@ -568,21 +567,6 @@ function TerminalTab({ config, update }: TabProps) {
           label="cursor blink"
           description="enable blinking animation on the cursor"
           right={<Toggle checked={config.cursorBlink} onChange={(v) => update("cursorBlink", v)} />}
-        />
-      </Section>
-
-      <Section title="input" description="terminal input behavior">
-        <SettingRow
-          label="new line shortcut"
-          description="key combination to insert a new line in the terminal"
-          right={
-            <SelectInput
-              value={config.newLineKey}
-              options={NEWLINE_OPTIONS}
-              onChange={(v) => update("newLineKey", v)}
-              width={200}
-            />
-          }
         />
       </Section>
 

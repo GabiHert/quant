@@ -18,6 +18,7 @@ type configManagerService struct {
 	getDatabasePath  usecase.GetDatabasePath
 	setLoginItem     usecase.SetLoginItem
 	sendNotification usecase.SendNotification
+	setNewLineKey    usecase.SetNewLineKey
 }
 
 // NewConfigManagerService creates a new ConfigManager service.
@@ -30,6 +31,7 @@ func NewConfigManagerService(
 	getDatabasePath usecase.GetDatabasePath,
 	setLoginItem usecase.SetLoginItem,
 	sendNotification usecase.SendNotification,
+	setNewLineKey usecase.SetNewLineKey,
 ) adapter.ConfigManager {
 	return &configManagerService{
 		loadConfig:       loadConfig,
@@ -39,6 +41,7 @@ func NewConfigManagerService(
 		getDatabasePath:  getDatabasePath,
 		setLoginItem:     setLoginItem,
 		sendNotification: sendNotification,
+		setNewLineKey:    setNewLineKey,
 	}
 }
 
@@ -61,6 +64,10 @@ func (s *configManagerService) SaveConfig(cfg *entity.Config) error {
 
 	if err := s.setLoginItem.SetLoginItem(cfg.StartOnLogin); err != nil {
 		return fmt.Errorf("failed to set login item: %w", err)
+	}
+
+	if err := s.setNewLineKey.SetNewLineKey(cfg.NewLineKey); err != nil {
+		return fmt.Errorf("failed to set new line key: %w", err)
 	}
 
 	return nil

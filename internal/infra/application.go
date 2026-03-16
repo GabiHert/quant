@@ -32,7 +32,10 @@ func Run(assets embed.FS) error {
 	configPersistence := persistence.NewConfigPersistence()
 	cfg, _ := configPersistence.LoadConfig()
 	if cfg != nil && cfg.AutoUpdate {
-		go exec.Command("brew", "upgrade", "quant").Run()
+		go func() {
+			exec.Command("brew", "update").Run()
+			exec.Command("brew", "upgrade", "quant").Run()
+		}()
 	}
 
 	injector := dependency.NewInjector(database)

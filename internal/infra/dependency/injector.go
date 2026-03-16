@@ -8,6 +8,7 @@ import (
 	"quant/internal/application/service"
 	intAdapter "quant/internal/integration/adapter"
 	"quant/internal/integration/entrypoint/controller"
+	"quant/internal/integration/keybindings"
 	"quant/internal/integration/loginitem"
 	"quant/internal/integration/notification"
 	"quant/internal/integration/persistence"
@@ -216,6 +217,7 @@ func (i *Injector) ConfigManager() appAdapter.ConfigManager {
 			dm,                        // GetDatabasePath
 			loginitem.NewManager(),    // SetLoginItem
 			notification.NewManager(), // SendNotification
+			keybindings.NewManager(),  // SetNewLineKey
 		)
 	}
 	return i.configManager
