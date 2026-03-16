@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"quant/internal/application/adapter"
+	"quant/internal/domain/entity"
 	intadapter "quant/internal/integration/adapter"
 	"quant/internal/integration/entrypoint/dto"
 )
@@ -36,7 +37,16 @@ func (c *sessionController) OnShutdown(_ context.Context) {
 
 // CreateSession creates a new session and returns its response DTO.
 func (c *sessionController) CreateSession(request dto.CreateSessionRequest) (*dto.SessionResponse, error) {
-	session, err := c.sessionManager.CreateSession(request.Name, request.Description, request.SessionType, request.RepoID, request.TaskID, request.UseWorktree, request.SkipPermissions)
+	opts := entity.SessionOptions{
+		UseWorktree:       request.UseWorktree,
+		SkipPermissions:   request.SkipPermissions,
+		AutoPull:          request.AutoPull,
+		PullBranch:        request.PullBranch,
+		BranchNamePattern: request.BranchNamePattern,
+		Model:             request.Model,
+		ExtraCliArgs:      request.ExtraCliArgs,
+	}
+	session, err := c.sessionManager.CreateSession(request.Name, request.Description, request.SessionType, request.RepoID, request.TaskID, opts)
 	if err != nil {
 		return nil, err
 	}

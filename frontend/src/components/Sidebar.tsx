@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { Repo, Task, Session, Action } from "../types";
 import { StatusDot } from "./StatusDot";
 import { StatusBadge } from "./StatusBadge";
@@ -6,6 +6,11 @@ import { ActionLog } from "./ActionLog";
 import { ContextMenu } from "./ContextMenu";
 import type { MenuItem } from "./ContextMenu";
 import * as api from "../api";
+
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 480;
+const SIDEBAR_DEFAULT_WIDTH = 288;
+const SIDEBAR_COLLAPSED_WIDTH = 48;
 
 interface SidebarProps {
   repos: Repo[];
@@ -75,6 +80,37 @@ export function Sidebar({
   } | null>(null);
 
   const [showArchived, setShowArchived] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const isResizing = useRef(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    function handleMouseMove(e: MouseEvent) {
+      if (!isResizing.current) return;
+      const newWidth = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, e.clientX));
+      setSidebarWidth(newWidth);
+    }
+    function handleMouseUp() {
+      if (!isResizing.current) return;
+      isResizing.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   function openRepoContextMenu(e: React.MouseEvent, repo: Repo) {
     e.preventDefault();
@@ -309,152 +345,330 @@ export function Sidebar({
     });
   }
 
-  return (
-    <aside
-      className="flex flex-col w-72 min-w-[18rem] h-full"
-      style={{
-        backgroundColor: "#0A0A0A",
-        borderRight: "1px solid #2a2a2a",
-      }}
-    >
-      {/* header */}
-      <div
-        className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: "1px solid #2a2a2a" }}
-      >
-        <h1
-          className="text-sm font-bold lowercase"
-          style={{ fontFamily: "'JetBrains Mono', monospace" }}
-        >
-          <span style={{ color: "#10B981" }}>{">"}</span>{" "}
-          <span style={{ color: "#FAFAFA" }}>quant</span>
-        </h1>
-        <button
-          onClick={onOpenRepo}
-          className="text-xs lowercase transition-colors"
-          style={{ color: "#6B7280", fontFamily: "'JetBrains Mono', monospace" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
-        >
-          + repo
-        </button>
-      </div>
-
-      {/* archive toggle */}
-      <div
-        className="flex"
-        style={{ borderBottom: "1px solid #2a2a2a" }}
-      >
-        <button
-          onClick={() => setShowArchived(false)}
-          className="flex-1 flex items-center justify-center py-2 text-[10px] lowercase transition-colors"
+  // Collapsed sidebar view
+  if (collapsed) {
+    return (
+      <div className="flex h-full">
+        <aside
+          className="flex flex-col h-full shrink-0"
           style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontWeight: showArchived ? "normal" : 500,
-            color: showArchived ? "#6B7280" : "#10B981",
-            borderBottom: showArchived ? "2px solid transparent" : "2px solid #10B981",
+            width: SIDEBAR_COLLAPSED_WIDTH,
+            backgroundColor: "#0A0A0A",
+            borderRight: "1px solid #2a2a2a",
           }}
         >
-          active
-        </button>
-        <button
-          onClick={() => setShowArchived(true)}
-          className="flex-1 flex items-center justify-center py-2 text-[10px] lowercase transition-colors"
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontWeight: showArchived ? 500 : "normal",
-            color: showArchived ? "#10B981" : "#6B7280",
-            borderBottom: showArchived ? "2px solid #10B981" : "2px solid transparent",
-          }}
-        >
-          archived
-        </button>
-      </div>
-
-      {/* tree nav */}
-      <nav className="flex-1 overflow-y-auto py-1">
-        {repos.map((repo, idx) => (
-          <RepoNode
-            key={repo.id}
-            repo={repo}
-            tasks={filterTasks(tasksByRepo[repo.id] ?? [])}
-            sessionsByTask={sessionsByTask}
-            actionsBySession={actionsBySession}
-            getDisplayStatus={getDisplayStatus}
-            openTabIds={openTabIds}
-            activeSessionId={activeSessionId}
-            expandedSessionId={expandedSessionId}
-            onSelectSession={onSelectSession}
-            onExpandSession={onExpandSession}
-            onOpenTab={onOpenTab}
-            onCreateTask={onCreateTask}
-            onCreateSession={onCreateSession}
-            onRepoContextMenu={openRepoContextMenu}
-            onTaskContextMenu={openTaskContextMenu}
-            onSessionContextMenu={openSessionContextMenu}
-            onDoubleClickSession={onDoubleClickSession}
-            onDropSession={onDropSession}
-            onError={onError}
-            showSeparator={idx < repos.length - 1}
-            filterSessions={filterSessions}
-            showArchived={showArchived}
-          />
-        ))}
-      </nav>
-
-      {/* bottom bar */}
-      <div className="flex items-center gap-2 p-3" style={{ borderTop: "1px solid #2a2a2a" }}>
-        <button
-          onClick={() => {
-            if (repos.length > 0) {
-              onCreateSession(repos[0].id);
-            }
-          }}
-          className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm lowercase transition-colors"
-          style={{
-            backgroundColor: "#10B981",
-            color: "#0A0A0A",
-            fontFamily: "'JetBrains Mono', monospace",
-            fontWeight: 500,
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#10B981")}
-        >
-          $ new_session
-        </button>
-        {onOpenSettings && (
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center justify-center shrink-0 transition-colors"
-            style={{
-              width: 36,
-              height: 36,
-              color: "#6B7280",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 16,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
-            title="settings"
+          {/* header: logo + expand toggle */}
+          <div
+            className="flex flex-col items-center justify-center gap-1 py-2"
+            style={{ borderBottom: "1px solid #2a2a2a", height: 64 }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
+            <span
+              style={{ color: "#10B981", fontFamily: "'JetBrains Mono', monospace", fontSize: 20, fontWeight: 700 }}
+            >
+              {">"}
+            </span>
+            <button
+              onClick={() => setCollapsed(false)}
+              className="flex items-center justify-center transition-colors"
+              style={{ color: "#6B7280" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+              title="expand sidebar"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M9 3v18" />
+                <path d="m14 9 3 3-3 3" />
+              </svg>
+            </button>
+          </div>
+
+          {/* repo icons */}
+          <div className="flex-1 flex flex-col items-center gap-1 py-2 overflow-y-auto">
+            {repos.map((repo) => (
+              <button
+                key={repo.id}
+                onClick={() => { setCollapsed(false); }}
+                onContextMenu={(e) => openRepoContextMenu(e, repo)}
+                className="flex items-center justify-center shrink-0 transition-colors"
+                style={{
+                  width: 32, height: 32, borderRadius: 4,
+                  color: "#6B7280",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 14, fontWeight: 700,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#1F1F1F"; e.currentTarget.style.color = "#10B981"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#6B7280"; }}
+                title={repo.name}
+              >
+                /
+              </button>
+            ))}
+            <div style={{ width: 24, height: 1, backgroundColor: "#2a2a2a", marginTop: 4, marginBottom: 4 }} />
+            <button
+              onClick={onOpenRepo}
+              className="flex items-center justify-center shrink-0 transition-colors"
+              style={{
+                width: 32, height: 32, borderRadius: 4,
+                color: "#4B5563",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 14,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#10B981"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "#4B5563"; }}
+              title="add repo"
+            >
+              +
+            </button>
+          </div>
+
+          {/* bottom bar */}
+          <div
+            className="flex flex-col items-center justify-center gap-1.5 py-2"
+            style={{ borderTop: "1px solid #2a2a2a" }}
+          >
+            {onOpenSettings && (
+              <button
+                onClick={onOpenSettings}
+                className="flex items-center justify-center transition-colors"
+                style={{ color: "#6B7280" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+                title="settings"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                if (repos.length > 0) onCreateSession(repos[0].id);
+              }}
+              className="flex items-center justify-center transition-colors"
+              style={{ color: "#10B981", fontFamily: "'JetBrains Mono', monospace", fontSize: 18, fontWeight: 700 }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#059669")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#10B981")}
+              title="new session"
+            >
+              +
+            </button>
+          </div>
+        </aside>
+
+        {/* context menu overlay */}
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={contextMenu.items}
+            onClose={() => setContextMenu(null)}
+          />
         )}
       </div>
+    );
+  }
 
-      {/* context menu overlay */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={contextMenu.items}
-          onClose={() => setContextMenu(null)}
+  // Expanded sidebar view
+  return (
+    <div className="flex h-full">
+      <aside
+        ref={sidebarRef}
+        className="flex flex-col h-full shrink-0"
+        style={{
+          width: sidebarWidth,
+          minWidth: SIDEBAR_MIN_WIDTH,
+          maxWidth: SIDEBAR_MAX_WIDTH,
+          backgroundColor: "#0A0A0A",
+          borderRight: "1px solid #2a2a2a",
+        }}
+      >
+        {/* header */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: "1px solid #2a2a2a" }}
+        >
+          <h1
+            className="text-sm font-bold lowercase"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            <span style={{ color: "#10B981" }}>{">"}</span>{" "}
+            <span style={{ color: "#FAFAFA" }}>quant</span>
+          </h1>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onOpenRepo}
+              className="text-xs lowercase transition-colors"
+              style={{ color: "#6B7280", fontFamily: "'JetBrains Mono', monospace" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+            >
+              + repo
+            </button>
+            <button
+              onClick={() => setCollapsed(true)}
+              className="flex items-center justify-center transition-colors"
+              style={{ color: "#6B7280" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+              title="collapse sidebar"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M9 3v18" />
+                <path d="m16 15-3-3 3-3" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* archive toggle */}
+        <div
+          className="flex"
+          style={{ borderBottom: "1px solid #2a2a2a" }}
+        >
+          <button
+            onClick={() => setShowArchived(false)}
+            className="flex-1 flex items-center justify-center py-2 text-[10px] lowercase transition-colors"
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontWeight: showArchived ? "normal" : 500,
+              color: showArchived ? "#6B7280" : "#10B981",
+              borderBottom: showArchived ? "2px solid transparent" : "2px solid #10B981",
+            }}
+          >
+            active
+          </button>
+          <button
+            onClick={() => setShowArchived(true)}
+            className="flex-1 flex items-center justify-center py-2 text-[10px] lowercase transition-colors"
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontWeight: showArchived ? 500 : "normal",
+              color: showArchived ? "#10B981" : "#6B7280",
+              borderBottom: showArchived ? "2px solid #10B981" : "2px solid transparent",
+            }}
+          >
+            archived
+          </button>
+        </div>
+
+        {/* tree nav */}
+        <nav className="flex-1 overflow-y-auto py-1">
+          {repos.map((repo, idx) => (
+            <RepoNode
+              key={repo.id}
+              repo={repo}
+              tasks={filterTasks(tasksByRepo[repo.id] ?? [])}
+              sessionsByTask={sessionsByTask}
+              actionsBySession={actionsBySession}
+              getDisplayStatus={getDisplayStatus}
+              openTabIds={openTabIds}
+              activeSessionId={activeSessionId}
+              expandedSessionId={expandedSessionId}
+              onSelectSession={onSelectSession}
+              onExpandSession={onExpandSession}
+              onOpenTab={onOpenTab}
+              onCreateTask={onCreateTask}
+              onCreateSession={onCreateSession}
+              onRepoContextMenu={openRepoContextMenu}
+              onTaskContextMenu={openTaskContextMenu}
+              onSessionContextMenu={openSessionContextMenu}
+              onDoubleClickSession={onDoubleClickSession}
+              onDropSession={onDropSession}
+              onError={onError}
+              showSeparator={idx < repos.length - 1}
+              filterSessions={filterSessions}
+              showArchived={showArchived}
+            />
+          ))}
+        </nav>
+
+        {/* bottom bar */}
+        <div className="flex items-center gap-2 p-3" style={{ borderTop: "1px solid #2a2a2a" }}>
+          <button
+            onClick={() => {
+              if (repos.length > 0) {
+                onCreateSession(repos[0].id);
+              }
+            }}
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm lowercase transition-colors"
+            style={{
+              backgroundColor: "#10B981",
+              color: "#0A0A0A",
+              fontFamily: "'JetBrains Mono', monospace",
+              fontWeight: 500,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#10B981")}
+          >
+            $ new_session
+          </button>
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center justify-center shrink-0 transition-colors"
+              style={{
+                width: 36,
+                height: 36,
+                color: "#6B7280",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 16,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#FAFAFA")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+              title="settings"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* context menu overlay */}
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={contextMenu.items}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+      </aside>
+
+      {/* resize handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="flex items-center justify-center shrink-0"
+        style={{
+          width: 6,
+          cursor: "col-resize",
+          backgroundColor: "transparent",
+        }}
+        onMouseEnter={(e) => {
+          const grip = e.currentTarget.querySelector<HTMLElement>("[data-grip]");
+          if (grip) grip.style.backgroundColor = "#6B7280";
+        }}
+        onMouseLeave={(e) => {
+          const grip = e.currentTarget.querySelector<HTMLElement>("[data-grip]");
+          if (grip) grip.style.backgroundColor = "#4B5563";
+        }}
+      >
+        <div
+          data-grip
+          style={{
+            width: 2,
+            height: 32,
+            borderRadius: 1,
+            backgroundColor: "#4B5563",
+            transition: "background-color 150ms",
+          }}
         />
-      )}
-    </aside>
+      </div>
+    </div>
   );
 }
 

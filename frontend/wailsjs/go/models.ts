@@ -104,6 +104,11 @@ export namespace dto {
 	    sessionType: string;
 	    useWorktree: boolean;
 	    skipPermissions: boolean;
+	    autoPull: boolean;
+	    pullBranch: string;
+	    branchNamePattern: string;
+	    model: string;
+	    extraCliArgs: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateSessionRequest(source);
@@ -118,6 +123,11 @@ export namespace dto {
 	        this.sessionType = source["sessionType"];
 	        this.useWorktree = source["useWorktree"];
 	        this.skipPermissions = source["skipPermissions"];
+	        this.autoPull = source["autoPull"];
+	        this.pullBranch = source["pullBranch"];
+	        this.branchNamePattern = source["branchNamePattern"];
+	        this.model = source["model"];
+	        this.extraCliArgs = source["extraCliArgs"];
 	    }
 	}
 	export class CreateTaskRequest {

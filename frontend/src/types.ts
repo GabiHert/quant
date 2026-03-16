@@ -70,8 +70,13 @@ export interface CreateSessionRequest {
   repoId: string;
   taskId?: string;
   sessionType: SessionType;
-  useWorktree?: boolean;
-  skipPermissions?: boolean;
+  useWorktree: boolean;
+  skipPermissions: boolean;
+  autoPull: boolean;
+  pullBranch: string;
+  branchNamePattern: string;
+  model: string;
+  extraCliArgs: string;
 }
 
 export interface Config {

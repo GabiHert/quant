@@ -14,6 +14,13 @@ type CreateSessionRequest struct {
 	SessionType     string `json:"sessionType"`
 	UseWorktree     bool   `json:"useWorktree"`
 	SkipPermissions bool   `json:"skipPermissions"`
+
+	// Advanced options (per-session overrides from config defaults)
+	AutoPull          bool   `json:"autoPull"`
+	PullBranch        string `json:"pullBranch"`
+	BranchNamePattern string `json:"branchNamePattern"`
+	Model             string `json:"model"`
+	ExtraCliArgs      string `json:"extraCliArgs"`
 }
 
 // SessionResponse represents the response payload for session data.

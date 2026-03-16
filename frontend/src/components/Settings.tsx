@@ -340,56 +340,31 @@ function SessionsTab({ config, update }: TabProps) {
           description="pass --dangerously-skip-permissions to claude cli"
           right={<Toggle checked={config.skipPermissions} onChange={(v) => update("skipPermissions", v)} />}
         />
-        <SettingRow
-          label="max concurrent sessions"
-          description="limit the number of sessions running simultaneously"
-          right={
-            <NumberInput
-              value={config.maxConcurrentSessions}
-              onChange={(v) => update("maxConcurrentSessions", v)}
-              min={1}
-              max={50}
-              width={80}
-            />
-          }
-        />
       </Section>
 
-      <Section title="lifecycle" description="control session startup and shutdown behavior">
-        <SettingRow
-          label="auto-resume on app start"
-          description="resume previously running sessions when quant launches"
-          right={<Toggle checked={config.autoResumeOnStart} onChange={(v) => update("autoResumeOnStart", v)} />}
-        />
-        <SettingRow
-          label="auto-stop idle sessions"
-          description="automatically stop sessions after a period of inactivity"
-          right={<Toggle checked={config.autoStopIdle} onChange={(v) => update("autoStopIdle", v)} />}
-        />
-        <SettingRow
-          label="idle timeout (minutes)"
-          description="minutes of inactivity before a session is stopped"
-          right={
-            <NumberInput
-              value={config.idleTimeoutMinutes}
-              onChange={(v) => update("idleTimeoutMinutes", v)}
-              min={1}
-              max={1440}
-              width={80}
-              disabled={!config.autoStopIdle}
-            />
-          }
-        />
-      </Section>
     </>
   );
 }
 
 function StorageTab({ config, update, onError, onReload }: TabProps & { onError: (msg: string) => void; onReload: () => void }) {
+  const [showRestartModal, setShowRestartModal] = useState(false);
+  const initialPathsRef = useRef({
+    dataDirectory: config.dataDirectory,
+    worktreeDirectory: config.worktreeDirectory,
+    logDirectory: config.logDirectory,
+  });
+
+  function updateWithRestartCheck<K extends "dataDirectory" | "worktreeDirectory" | "logDirectory">(key: K, value: string) {
+    update(key, value);
+    if (value !== initialPathsRef.current[key]) {
+      setShowRestartModal(true);
+    }
+  }
+
   async function handleBrowse(key: "dataDirectory" | "worktreeDirectory" | "logDirectory") {
     try {
       const path = await api.browseConfigDirectory();
-      if (path) update(key, path);
+      if (path) updateWithRestartCheck(key, path);
     } catch (err) {
       onError(String(err));
     }
@@ -424,7 +399,7 @@ function StorageTab({ config, update, onError, onReload }: TabProps & { onError:
           description="root directory for database, logs, and worktrees"
           right={
             <div className="flex items-center gap-2">
-              <TextInput value={config.dataDirectory} onChange={(v) => update("dataDirectory", v)} width={240} />
+              <TextInput value={config.dataDirectory} onChange={(v) => updateWithRestartCheck("dataDirectory", v)} width={240} />
               <BrowseButton onClick={() => handleBrowse("dataDirectory")} />
             </div>
           }
@@ -434,7 +409,7 @@ function StorageTab({ config, update, onError, onReload }: TabProps & { onError:
           description="where git worktrees are created for isolated sessions"
           right={
             <div className="flex items-center gap-2">
-              <TextInput value={config.worktreeDirectory} onChange={(v) => update("worktreeDirectory", v)} width={240} />
+              <TextInput value={config.worktreeDirectory} onChange={(v) => updateWithRestartCheck("worktreeDirectory", v)} width={240} />
               <BrowseButton onClick={() => handleBrowse("worktreeDirectory")} />
             </div>
           }
@@ -444,14 +419,11 @@ function StorageTab({ config, update, onError, onReload }: TabProps & { onError:
           description="where terminal output logs are stored"
           right={
             <div className="flex items-center gap-2">
-              <TextInput value={config.logDirectory} onChange={(v) => update("logDirectory", v)} width={240} />
+              <TextInput value={config.logDirectory} onChange={(v) => updateWithRestartCheck("logDirectory", v)} width={240} />
               <BrowseButton onClick={() => handleBrowse("logDirectory")} />
             </div>
           }
         />
-      </Section>
-
-      <Section title="database" description="sqlite database information">
         <SettingRow
           label="database path"
           description="sqlite database file location (read-only)"
@@ -486,7 +458,48 @@ function StorageTab({ config, update, onError, onReload }: TabProps & { onError:
           right={<DangerButton label="x reset db" onClick={handleResetDb} />}
         />
       </DangerSection>
+
+      {showRestartModal && (
+        <RestartModal onClose={() => setShowRestartModal(false)} />
+      )}
     </>
+  );
+}
+
+function RestartModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+      <div
+        className="flex flex-col gap-6 p-8"
+        style={{
+          backgroundColor: "#0A0A0A",
+          border: "1px solid #2a2a2a",
+          fontFamily: "'JetBrains Mono', monospace",
+          maxWidth: 400,
+        }}
+      >
+        <div className="flex flex-col gap-2">
+          <span style={{ color: "#F59E0B", fontSize: 12, fontWeight: 700 }}>~ restart required</span>
+          <span style={{ color: "#6B7280", fontSize: 11 }}>
+            storage paths have changed. please restart quant for the changes to take effect.
+          </span>
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs transition-colors"
+            style={{
+              backgroundColor: "#F59E0B",
+              color: "#0A0A0A",
+              fontWeight: 500,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}
+          >
+            ok, got it
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

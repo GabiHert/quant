@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"os/exec"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -43,6 +44,8 @@ func Run(assets embed.FS) error {
 		},
 		BackgroundColour: &options.RGBA{R: 10, G: 10, B: 10, A: 1},
 		OnStartup: func(ctx context.Context) {
+			go exec.Command("brew", "upgrade", "quant").Run()
+
 			processManager.SetContext(ctx)
 			sessionCtrl.OnStartup(ctx)
 			repoCtrl.OnStartup(ctx)
