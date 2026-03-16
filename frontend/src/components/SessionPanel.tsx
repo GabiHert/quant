@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import type { Session, Task } from "../types";
+import type { Session, Task, Config } from "../types";
 import { StatusDot } from "./StatusDot";
 import * as api from "../api";
 
@@ -37,10 +37,20 @@ export function SessionPanel({
   const [autoScroll, setAutoScroll] = useState(true);
   const autoScrollRef = useRef(true);
   const isWritingRef = useRef(false); // true while xterm.write() is executing
+  const [termConfig, setTermConfig] = useState<Config | null>(null);
+  const termConfigRef = useRef<Config | null>(null);
 
   // Track session ID changes to know when we need a fresh terminal.
   sessionIdRef.current = session.id;
   autoScrollRef.current = autoScroll;
+
+  // Load terminal config on mount
+  useEffect(() => {
+    api.getConfig().then((cfg) => {
+      setTermConfig(cfg);
+      termConfigRef.current = cfg;
+    }).catch(() => {});
+  }, []);
 
   const isArchived = displayStatus === "archived";
 
@@ -56,12 +66,15 @@ export function SessionPanel({
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
 
+    const cfg = termConfigRef.current;
     const term = new Terminal({
-      cursorBlink: !isArchived,
+      cursorBlink: isArchived ? false : (cfg?.cursorBlink ?? true),
+      cursorStyle: (cfg?.cursorStyle as "block" | "underline" | "bar") ?? "block",
       disableStdin: isArchived,
-      fontFamily: "'JetBrains Mono', 'Menlo', 'Monaco', monospace",
-      fontSize: 13,
-      lineHeight: 1.2,
+      fontFamily: cfg?.fontFamily ? `'${cfg.fontFamily}', 'Menlo', 'Monaco', monospace` : "'JetBrains Mono', 'Menlo', 'Monaco', monospace",
+      fontSize: cfg?.fontSize ?? 13,
+      lineHeight: cfg?.lineHeight ?? 1.2,
+      scrollback: cfg?.scrollbackLines ?? 10000,
       theme: {
         background: "#0A0A0A",
         foreground: "#FAFAFA",
@@ -93,6 +106,19 @@ export function SessionPanel({
     termRef.current = term;
 
     if (!isArchived) {
+      // Intercept keyboard for new line shortcut.
+      const newLineKey = cfg?.newLineKey ?? "backslash+enter";
+      if (newLineKey === "shift+enter") {
+        term.attachCustomKeyEventHandler((e) => {
+          if (e.type === "keydown" && e.key === "Enter" && e.shiftKey) {
+            // Send newline character to PTY
+            api.sendMessage(sessionIdRef.current, "\n").catch(() => {});
+            return false; // prevent default enter handling
+          }
+          return true;
+        });
+      }
+
       // Send keystrokes to PTY via backend.
       term.onData((data) => {
         api.sendMessage(sessionIdRef.current, data).catch(() => {});
@@ -129,7 +155,7 @@ export function SessionPanel({
 
     return term;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isArchived]);
+  }, [isArchived, termConfig]);
 
   // Initialize terminal and set up event listeners.
   useEffect(() => {

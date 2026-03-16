@@ -55,7 +55,7 @@ func (m *processManager) outputPath(sessionID string) string {
 
 // Spawn starts a process in a PTY and streams output to the frontend.
 // For "claude" sessions it launches the Claude CLI; for "terminal" sessions it launches a shell.
-func (m *processManager) Spawn(sessionID string, sessionType string, directory string, conversationID string, skipPermissions bool, rows uint16, cols uint16) (int, error) {
+func (m *processManager) Spawn(sessionID string, sessionType string, directory string, conversationID string, skipPermissions bool, model string, extraCliArgs string, rows uint16, cols uint16) (int, error) {
 	// Stop any existing process for this session.
 	m.mu.RLock()
 	_, exists := m.processes[sessionID]
@@ -82,6 +82,12 @@ func (m *processManager) Spawn(sessionID string, sessionType string, directory s
 		}
 		if skipPermissions {
 			args = append(args, "--dangerously-skip-permissions")
+		}
+		if model != "" && model != "cli default" {
+			args = append(args, "--model", model)
+		}
+		if extraCliArgs != "" {
+			args = append(args, strings.Fields(extraCliArgs)...)
 		}
 		cmd = exec.Command("claude", args...)
 	}
@@ -189,7 +195,7 @@ func (m *processManager) Spawn(sessionID string, sessionType string, directory s
 			_ = os.Truncate(m.outputPath(sessionID), 0)
 
 			// Respawn fresh with --session-id.
-			newPid, err := m.Spawn(sessionID, sessionType, directory, "", skipPermissions, rows, cols)
+			newPid, err := m.Spawn(sessionID, sessionType, directory, "", skipPermissions, model, extraCliArgs, rows, cols)
 			if err == nil && m.ctx != nil {
 				// Notify frontend of the new PID via a restart event.
 				wailsRuntime.EventsEmit(m.ctx, "session:restarted", map[string]interface{}{

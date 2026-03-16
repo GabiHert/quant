@@ -23,6 +23,7 @@ export namespace dto {
 	export class ConfigResponse {
 	    startOnLogin: boolean;
 	    notifications: boolean;
+	    autoUpdate: boolean;
 	    autoPull: boolean;
 	    defaultPullBranch: string;
 	    branchNamePattern: string;
@@ -43,6 +44,7 @@ export namespace dto {
 	    cursorStyle: string;
 	    cursorBlink: boolean;
 	    scrollbackLines: number;
+	    newLineKey: string;
 	    cliBinaryPath: string;
 	    extraCliArgs: string;
 	    defaultModel: string;
@@ -56,6 +58,7 @@ export namespace dto {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.startOnLogin = source["startOnLogin"];
 	        this.notifications = source["notifications"];
+	        this.autoUpdate = source["autoUpdate"];
 	        this.autoPull = source["autoPull"];
 	        this.defaultPullBranch = source["defaultPullBranch"];
 	        this.branchNamePattern = source["branchNamePattern"];
@@ -76,6 +79,7 @@ export namespace dto {
 	        this.cursorStyle = source["cursorStyle"];
 	        this.cursorBlink = source["cursorBlink"];
 	        this.scrollbackLines = source["scrollbackLines"];
+	        this.newLineKey = source["newLineKey"];
 	        this.cliBinaryPath = source["cliBinaryPath"];
 	        this.extraCliArgs = source["extraCliArgs"];
 	        this.defaultModel = source["defaultModel"];
@@ -169,6 +173,7 @@ export namespace dto {
 	export class SaveConfigRequest {
 	    startOnLogin: boolean;
 	    notifications: boolean;
+	    autoUpdate: boolean;
 	    autoPull: boolean;
 	    defaultPullBranch: string;
 	    branchNamePattern: string;
@@ -189,6 +194,7 @@ export namespace dto {
 	    cursorStyle: string;
 	    cursorBlink: boolean;
 	    scrollbackLines: number;
+	    newLineKey: string;
 	    cliBinaryPath: string;
 	    extraCliArgs: string;
 	    defaultModel: string;
@@ -202,6 +208,7 @@ export namespace dto {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.startOnLogin = source["startOnLogin"];
 	        this.notifications = source["notifications"];
+	        this.autoUpdate = source["autoUpdate"];
 	        this.autoPull = source["autoPull"];
 	        this.defaultPullBranch = source["defaultPullBranch"];
 	        this.branchNamePattern = source["branchNamePattern"];
@@ -222,6 +229,7 @@ export namespace dto {
 	        this.cursorStyle = source["cursorStyle"];
 	        this.cursorBlink = source["cursorBlink"];
 	        this.scrollbackLines = source["scrollbackLines"];
+	        this.newLineKey = source["newLineKey"];
 	        this.cliBinaryPath = source["cliBinaryPath"];
 	        this.extraCliArgs = source["extraCliArgs"];
 	        this.defaultModel = source["defaultModel"];

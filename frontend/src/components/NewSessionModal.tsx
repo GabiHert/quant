@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { Repo, Task, CreateSessionRequest, SessionType, Config } from "../types";
 import * as api from "../api";
 
-const MODEL_OPTIONS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"];
+const MODEL_OPTIONS = ["cli default", "claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"];
 
 interface Props {
   repos: Repo[];

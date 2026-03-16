@@ -102,6 +102,8 @@ func (s *sessionManagerService) CreateSession(name string, description string, s
 		RepoID:          repoID,
 		TaskID:          taskID,
 		SkipPermissions: opts.SkipPermissions,
+		Model:           opts.Model,
+		ExtraCliArgs:    opts.ExtraCliArgs,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		LastActiveAt:    now,
@@ -126,7 +128,7 @@ func (s *sessionManagerService) StartSession(id string, rows int, cols int) erro
 		return fmt.Errorf("session not found: %s", id)
 	}
 
-	pid, err := s.spawnProcess.Spawn(session.ID, session.SessionType, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
+	pid, err := s.spawnProcess.Spawn(session.ID, session.SessionType, session.Directory, session.ClaudeConvID, session.SkipPermissions, session.Model, session.ExtraCliArgs, uint16(rows), uint16(cols))
 	if err != nil {
 		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
 		return fmt.Errorf("failed to spawn process: %w", err)
@@ -160,7 +162,7 @@ func (s *sessionManagerService) ResumeSession(id string, rows int, cols int) err
 		return fmt.Errorf("session not found: %s", id)
 	}
 
-	pid, err := s.spawnProcess.Spawn(session.ID, session.SessionType, session.Directory, session.ClaudeConvID, session.SkipPermissions, uint16(rows), uint16(cols))
+	pid, err := s.spawnProcess.Spawn(session.ID, session.SessionType, session.Directory, session.ClaudeConvID, session.SkipPermissions, session.Model, session.ExtraCliArgs, uint16(rows), uint16(cols))
 	if err != nil {
 		_ = s.updateSession.UpdateStatus(id, sessionstatus.Error)
 		return fmt.Errorf("failed to resume process: %w", err)

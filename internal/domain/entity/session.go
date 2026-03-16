@@ -20,6 +20,8 @@ type Session struct {
 	RepoID          string
 	TaskID          string
 	SkipPermissions bool
+	Model           string
+	ExtraCliArgs    string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	LastActiveAt    time.Time

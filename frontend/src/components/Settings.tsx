@@ -15,7 +15,8 @@ const NAV_ITEMS: { key: SettingsTab; label: string; icon: string }[] = [
 
 const FONT_OPTIONS = ["JetBrains Mono", "Fira Code", "Source Code Pro", "Cascadia Code", "Menlo", "Monaco", "Consolas"];
 const CURSOR_OPTIONS = ["block", "underline", "bar"];
-const MODEL_OPTIONS = ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"];
+const NEWLINE_OPTIONS = ["backslash+enter", "shift+enter"];
+const MODEL_OPTIONS = ["cli default", "claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"];
 
 interface Props {
   repos: Repo[];
@@ -178,6 +179,11 @@ function GeneralTab({ config, update }: TabProps) {
         label="notifications"
         description="show system notifications when sessions complete or error"
         right={<Toggle checked={config.notifications} onChange={(v) => update("notifications", v)} />}
+      />
+      <SettingRow
+        label="auto update"
+        description="check for updates and upgrade quant automatically on startup"
+        right={<Toggle checked={config.autoUpdate} onChange={(v) => update("autoUpdate", v)} />}
       />
     </Section>
   );
@@ -565,6 +571,21 @@ function TerminalTab({ config, update }: TabProps) {
         />
       </Section>
 
+      <Section title="input" description="terminal input behavior">
+        <SettingRow
+          label="new line shortcut"
+          description="key combination to insert a new line in the terminal"
+          right={
+            <SelectInput
+              value={config.newLineKey}
+              options={NEWLINE_OPTIONS}
+              onChange={(v) => update("newLineKey", v)}
+              width={200}
+            />
+          }
+        />
+      </Section>
+
       <Section title="scrollback" description="terminal history buffer">
         <SettingRow
           label="scrollback lines"
@@ -585,29 +606,12 @@ function TerminalTab({ config, update }: TabProps) {
 }
 
 function ClaudeTab({ config, update }: TabProps) {
-  const [newKey, setNewKey] = useState("");
-  const [newVal, setNewVal] = useState("");
-
-  function addEnv() {
-    if (!newKey.trim()) return;
-    const updated = { ...config.envVariables, [newKey.trim()]: newVal.trim() };
-    update("envVariables", updated);
-    setNewKey("");
-    setNewVal("");
-  }
-
-  function removeEnv(key: string) {
-    const updated = { ...config.envVariables };
-    delete updated[key];
-    update("envVariables", updated);
-  }
-
   return (
     <>
       <Section title="claude cli" description="configure the claude code cli binary and arguments">
         <SettingRow
-          label="cli binary path"
-          description="path to the claude code cli executable"
+          label="claude command"
+          description="command used to launch the claude code cli"
           right={
             <TextInput
               value={config.cliBinaryPath}
@@ -640,48 +644,6 @@ function ClaudeTab({ config, update }: TabProps) {
             />
           }
         />
-      </Section>
-
-      <Section title="environment" description="environment variables passed to claude sessions">
-        <div style={{ border: "1px solid #2a2a2a" }}>
-          {/* Table Header */}
-          <div className="flex" style={{ backgroundColor: "#1F1F1F", height: 32, borderBottom: "1px solid #2a2a2a" }}>
-            <div className="flex-1 flex items-center px-3" style={{ color: "#6B7280", fontSize: 10, fontWeight: 700 }}>
-              variable
-            </div>
-            <div className="flex-1 flex items-center px-3" style={{ color: "#6B7280", fontSize: 10, fontWeight: 700 }}>
-              value
-            </div>
-            <div className="flex items-center justify-center" style={{ width: 80, color: "#6B7280", fontSize: 10 }} />
-          </div>
-          {/* Rows */}
-          {Object.entries(config.envVariables).map(([key, val]) => (
-            <div key={key} className="flex" style={{ height: 36, borderBottom: "1px solid #2a2a2a" }}>
-              <div className="flex-1 flex items-center px-3" style={{ color: "#FAFAFA", fontSize: 11 }}>
-                {key}
-              </div>
-              <div className="flex-1 flex items-center px-3" style={{ color: "#10B981", fontSize: 11 }}>
-                {val}
-              </div>
-              <div className="flex items-center justify-center" style={{ width: 80 }}>
-                <button
-                  onClick={() => removeEnv(key)}
-                  style={{ color: "#EF4444", fontSize: 11, fontWeight: 700 }}
-                >
-                  x
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-        {/* Add env row */}
-        <div className="flex items-center gap-2 mt-3">
-          <TextInput value={newKey} onChange={setNewKey} width={200} placeholder="VARIABLE_NAME" />
-          <TextInput value={newVal} onChange={setNewVal} width={200} placeholder="value" />
-          <button onClick={addEnv} style={{ color: "#10B981", fontSize: 11 }}>
-            + add variable
-          </button>
-        </div>
       </Section>
     </>
   );
@@ -911,29 +873,84 @@ function SelectInput({
   onChange: (v: string) => void;
   width: number;
 }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        width,
-        height: 32,
-        backgroundColor: "#0F0F0F",
-        border: "1px solid #2a2a2a",
-        color: "#FAFAFA",
-        fontSize: 12,
-        fontFamily: font,
-        padding: "0 12px",
-        appearance: "none",
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M0 2l4 4 4-4' fill='none' stroke='%236B7280' stroke-width='1.5'/%3E%3C/svg%3E")`,
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "right 12px center",
-      }}
-    >
-      {options.map((opt) => (
-        <option key={opt} value={opt}>{opt}</option>
-      ))}
-    </select>
+    <div ref={wrapRef} style={{ position: "relative", width }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width,
+          height: 32,
+          backgroundColor: "#0F0F0F",
+          border: `1px solid ${open ? "#10B981" : "#2a2a2a"}`,
+          color: "#FAFAFA",
+          fontSize: 12,
+          fontFamily: font,
+          padding: "0 12px",
+          textAlign: "left",
+          cursor: "pointer",
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M0 2l4 4 4-4' fill='none' stroke='%236B7280' stroke-width='1.5'/%3E%3C/svg%3E")`,
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 12px center",
+        }}
+      >
+        {value}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: 36,
+            left: 0,
+            zIndex: 50,
+            backgroundColor: "#0A0A0A",
+            border: "1px solid #2a2a2a",
+            width: "100%",
+          }}
+        >
+          {options.map((opt) => (
+            <button
+              key={opt}
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className="w-full flex items-center text-left transition-colors"
+              style={{
+                height: 28,
+                padding: "0 12px",
+                gap: 8,
+                fontFamily: font,
+                fontSize: 11,
+                color: opt === value ? "#10B981" : "#D1D5DB",
+                backgroundColor: opt === value ? "#1F1F1F" : "transparent",
+                border: "none",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                if (opt !== value) e.currentTarget.style.backgroundColor = "#1F1F1F";
+              }}
+              onMouseLeave={(e) => {
+                if (opt !== value) e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <span style={{ color: "#10B981", flexShrink: 0 }}>~</span>
+              <span>{opt}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

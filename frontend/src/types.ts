@@ -83,6 +83,7 @@ export interface Config {
   // General
   startOnLogin: boolean;
   notifications: boolean;
+  autoUpdate: boolean;
 
   // Git & Branches
   autoPull: boolean;
@@ -111,6 +112,7 @@ export interface Config {
   cursorStyle: string;
   cursorBlink: boolean;
   scrollbackLines: number;
+  newLineKey: string;
 
   // Claude CLI
   cliBinaryPath: string;

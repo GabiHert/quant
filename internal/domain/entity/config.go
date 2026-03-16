@@ -6,6 +6,7 @@ type Config struct {
 	// General
 	StartOnLogin  bool `json:"startOnLogin"`
 	Notifications bool `json:"notifications"`
+	AutoUpdate    bool `json:"autoUpdate"`
 
 	// Git & Branches
 	AutoPull           bool              `json:"autoPull"`
@@ -34,6 +35,7 @@ type Config struct {
 	CursorStyle     string  `json:"cursorStyle"`
 	CursorBlink     bool    `json:"cursorBlink"`
 	ScrollbackLines int     `json:"scrollbackLines"`
+	NewLineKey      string  `json:"newLineKey"`
 
 	// Claude CLI
 	CliBinaryPath string            `json:"cliBinaryPath"`
@@ -48,6 +50,7 @@ func NewDefaultConfig() Config {
 		// General
 		StartOnLogin:  false,
 		Notifications: true,
+		AutoUpdate:    true,
 
 		// Git & Branches
 		AutoPull:           true,
@@ -76,11 +79,12 @@ func NewDefaultConfig() Config {
 		CursorStyle:     "block",
 		CursorBlink:     true,
 		ScrollbackLines: 10000,
+		NewLineKey:      "backslash+enter",
 
 		// Claude CLI
 		CliBinaryPath: "claude",
 		ExtraCliArgs:  "",
-		DefaultModel:  "claude-sonnet-4-6",
+		DefaultModel:  "cli default",
 		EnvVariables:  make(map[string]string),
 	}
 }

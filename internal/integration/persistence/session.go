@@ -22,15 +22,15 @@ func NewSessionPersistence(db *sql.DB) adapter.SessionPersistence {
 }
 
 const sessionColumns = `id, name, description, session_type, status, directory, worktree_path, branch_name,
-		claude_conv_id, pid, repo_id, task_id, skip_permissions, created_at, updated_at, last_active_at, archived_at`
+		claude_conv_id, pid, repo_id, task_id, skip_permissions, model, extra_cli_args, created_at, updated_at, last_active_at, archived_at`
 
 func scanSessionRow(scanner interface{ Scan(...any) error }) (pdto.SessionRow, error) {
 	var row pdto.SessionRow
 	err := scanner.Scan(
 		&row.ID, &row.Name, &row.Description, &row.SessionType, &row.Status, &row.Directory,
 		&row.WorktreePath, &row.BranchName, &row.ClaudeConvID, &row.PID,
-		&row.RepoID, &row.TaskID, &row.SkipPermissions, &row.CreatedAt, &row.UpdatedAt, &row.LastActiveAt,
-		&row.ArchivedAt,
+		&row.RepoID, &row.TaskID, &row.SkipPermissions, &row.Model, &row.ExtraCliArgs,
+		&row.CreatedAt, &row.UpdatedAt, &row.LastActiveAt, &row.ArchivedAt,
 	)
 	return row, err
 }
@@ -135,13 +135,14 @@ func (p *sessionPersistence) Save(session entity.Session) error {
 	row := pdto.SessionRowFromEntity(session)
 
 	query := `INSERT INTO sessions (id, name, description, session_type, status, directory, worktree_path,
-		branch_name, claude_conv_id, pid, repo_id, task_id, skip_permissions, created_at, updated_at, last_active_at, archived_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		branch_name, claude_conv_id, pid, repo_id, task_id, skip_permissions, model, extra_cli_args,
+		created_at, updated_at, last_active_at, archived_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := p.db.Exec(query,
 		row.ID, row.Name, row.Description, row.SessionType, row.Status, row.Directory,
 		row.WorktreePath, row.BranchName, row.ClaudeConvID, row.PID,
-		row.RepoID, row.TaskID, row.SkipPermissions,
+		row.RepoID, row.TaskID, row.SkipPermissions, row.Model, row.ExtraCliArgs,
 		row.CreatedAt, row.UpdatedAt, row.LastActiveAt, row.ArchivedAt,
 	)
 	if err != nil {
@@ -199,13 +200,13 @@ func (p *sessionPersistence) Update(session entity.Session) error {
 
 	query := `UPDATE sessions SET name = ?, description = ?, status = ?, directory = ?,
 		worktree_path = ?, branch_name = ?, claude_conv_id = ?, pid = ?,
-		repo_id = ?, task_id = ?, skip_permissions = ?,
+		repo_id = ?, task_id = ?, skip_permissions = ?, model = ?, extra_cli_args = ?,
 		updated_at = ?, last_active_at = ?, archived_at = ? WHERE id = ?`
 
 	result, err := p.db.Exec(query,
 		row.Name, row.Description, row.Status, row.Directory,
 		row.WorktreePath, row.BranchName, row.ClaudeConvID, row.PID,
-		row.RepoID, row.TaskID, row.SkipPermissions,
+		row.RepoID, row.TaskID, row.SkipPermissions, row.Model, row.ExtraCliArgs,
 		row.UpdatedAt, row.LastActiveAt, row.ArchivedAt, row.ID,
 	)
 	if err != nil {

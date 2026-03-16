@@ -10,6 +10,7 @@ type SaveConfigRequest struct {
 	// General
 	StartOnLogin  bool `json:"startOnLogin"`
 	Notifications bool `json:"notifications"`
+	AutoUpdate    bool `json:"autoUpdate"`
 
 	// Git & Branches
 	AutoPull           bool              `json:"autoPull"`
@@ -38,6 +39,7 @@ type SaveConfigRequest struct {
 	CursorStyle     string  `json:"cursorStyle"`
 	CursorBlink     bool    `json:"cursorBlink"`
 	ScrollbackLines int     `json:"scrollbackLines"`
+	NewLineKey      string  `json:"newLineKey"`
 
 	// Claude CLI
 	CliBinaryPath string            `json:"cliBinaryPath"`
@@ -51,6 +53,7 @@ type ConfigResponse struct {
 	// General
 	StartOnLogin  bool `json:"startOnLogin"`
 	Notifications bool `json:"notifications"`
+	AutoUpdate    bool `json:"autoUpdate"`
 
 	// Git & Branches
 	AutoPull           bool              `json:"autoPull"`
@@ -79,6 +82,7 @@ type ConfigResponse struct {
 	CursorStyle     string  `json:"cursorStyle"`
 	CursorBlink     bool    `json:"cursorBlink"`
 	ScrollbackLines int     `json:"scrollbackLines"`
+	NewLineKey      string  `json:"newLineKey"`
 
 	// Claude CLI
 	CliBinaryPath string            `json:"cliBinaryPath"`
@@ -92,6 +96,7 @@ func ConfigResponseFromEntity(cfg entity.Config) ConfigResponse {
 	return ConfigResponse{
 		StartOnLogin:          cfg.StartOnLogin,
 		Notifications:         cfg.Notifications,
+		AutoUpdate:            cfg.AutoUpdate,
 		AutoPull:              cfg.AutoPull,
 		DefaultPullBranch:     cfg.DefaultPullBranch,
 		BranchNamePattern:     cfg.BranchNamePattern,
@@ -112,6 +117,7 @@ func ConfigResponseFromEntity(cfg entity.Config) ConfigResponse {
 		CursorStyle:           cfg.CursorStyle,
 		CursorBlink:           cfg.CursorBlink,
 		ScrollbackLines:       cfg.ScrollbackLines,
+		NewLineKey:            cfg.NewLineKey,
 		CliBinaryPath:         cfg.CliBinaryPath,
 		ExtraCliArgs:          cfg.ExtraCliArgs,
 		DefaultModel:          cfg.DefaultModel,
@@ -143,6 +149,7 @@ func (r SaveConfigRequest) ToEntity() entity.Config {
 	return entity.Config{
 		StartOnLogin:          r.StartOnLogin,
 		Notifications:         r.Notifications,
+		AutoUpdate:            r.AutoUpdate,
 		AutoPull:              r.AutoPull,
 		DefaultPullBranch:     r.DefaultPullBranch,
 		BranchNamePattern:     r.BranchNamePattern,
@@ -163,6 +170,7 @@ func (r SaveConfigRequest) ToEntity() entity.Config {
 		CursorStyle:           r.CursorStyle,
 		CursorBlink:           r.CursorBlink,
 		ScrollbackLines:       r.ScrollbackLines,
+		NewLineKey:            r.NewLineKey,
 		CliBinaryPath:         r.CliBinaryPath,
 		ExtraCliArgs:          r.ExtraCliArgs,
 		DefaultModel:          r.DefaultModel,

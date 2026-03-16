@@ -23,6 +23,8 @@ type SessionRow struct {
 	RepoID          sql.NullString
 	TaskID          sql.NullString
 	SkipPermissions bool
+	Model           sql.NullString
+	ExtraCliArgs    sql.NullString
 	CreatedAt       string
 	UpdatedAt       string
 	LastActiveAt    string
@@ -55,6 +57,8 @@ func (r SessionRow) ToEntity() entity.Session {
 		RepoID:          r.RepoID.String,
 		TaskID:          r.TaskID.String,
 		SkipPermissions: r.SkipPermissions,
+		Model:           r.Model.String,
+		ExtraCliArgs:    r.ExtraCliArgs.String,
 		CreatedAt:       createdAt,
 		UpdatedAt:       updatedAt,
 		LastActiveAt:    lastActiveAt,
@@ -83,6 +87,8 @@ func SessionRowFromEntity(session entity.Session) SessionRow {
 		RepoID:          toNullString(session.RepoID),
 		TaskID:          toNullString(session.TaskID),
 		SkipPermissions: session.SkipPermissions,
+		Model:           toNullString(session.Model),
+		ExtraCliArgs:    toNullString(session.ExtraCliArgs),
 		CreatedAt:       session.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       session.UpdatedAt.Format(time.RFC3339),
 		LastActiveAt:    session.LastActiveAt.Format(time.RFC3339),

@@ -13,6 +13,7 @@ import (
 
 	"quant/internal/infra/db"
 	"quant/internal/infra/dependency"
+	"quant/internal/integration/persistence"
 )
 
 // Run bootstraps and starts the Wails application with all dependencies wired.
@@ -26,6 +27,13 @@ func Run(assets embed.FS) error {
 	// On startup, mark any "running" sessions as "paused" since their processes
 	// died when the app was closed. Output is preserved on disk for replay.
 	_, _ = database.Exec(`UPDATE sessions SET status = 'paused', pid = 0 WHERE status = 'running'`)
+
+	// Load config early to check auto-update preference.
+	configPersistence := persistence.NewConfigPersistence()
+	cfg, _ := configPersistence.LoadConfig()
+	if cfg != nil && cfg.AutoUpdate {
+		go exec.Command("brew", "upgrade", "quant").Run()
+	}
 
 	injector := dependency.NewInjector(database)
 	sessionCtrl := injector.SessionController()
@@ -44,8 +52,6 @@ func Run(assets embed.FS) error {
 		},
 		BackgroundColour: &options.RGBA{R: 10, G: 10, B: 10, A: 1},
 		OnStartup: func(ctx context.Context) {
-			go exec.Command("brew", "upgrade", "quant").Run()
-
 			processManager.SetContext(ctx)
 			sessionCtrl.OnStartup(ctx)
 			repoCtrl.OnStartup(ctx)

@@ -90,6 +90,8 @@ func runMigrations(db *sql.DB) error {
 		repo_id TEXT,
 		task_id TEXT,
 		skip_permissions INTEGER NOT NULL DEFAULT 0,
+		model TEXT,
+		extra_cli_args TEXT,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
 		last_active_at TEXT NOT NULL,
@@ -125,6 +127,8 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN archived_at TEXT`,
 		`ALTER TABLE tasks ADD COLUMN archived_at TEXT`,
 		`ALTER TABLE sessions ADD COLUMN session_type TEXT NOT NULL DEFAULT 'claude'`,
+		`ALTER TABLE sessions ADD COLUMN model TEXT`,
+		`ALTER TABLE sessions ADD COLUMN extra_cli_args TEXT`,
 	}
 	for _, stmt := range alterStatements {
 		// Ignore errors from ALTER TABLE since the column may already exist.
