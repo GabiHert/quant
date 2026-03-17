@@ -52,6 +52,9 @@ function App() {
   const [transitionStatus, setTransitionStatus] = useState<Record<string, "starting" | "stopping" | "resuming">>({});
   const [activeOutputIds, setActiveOutputIds] = useState<Set<string>>(new Set());
   const outputTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Embedded terminal tracking: parentSessionId -> terminalSessionId
+  const [embeddedTerminalMap, setEmbeddedTerminalMap] = useState<Record<string, string>>({});
+
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [error, setError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: number; message: string }[]>([]);
@@ -314,6 +317,12 @@ function App() {
   }
 
   function handleCloseTab(id: string) {
+    // Clean up embedded terminal if any
+    const embeddedTermId = embeddedTerminalMap[id];
+    if (embeddedTermId) {
+      handleDeleteEmbeddedTerminal(embeddedTermId);
+    }
+
     setOpenTabIds((prev) => {
       const next = prev.filter((t) => t !== id);
       return next;
@@ -328,12 +337,11 @@ function App() {
     });
   }
 
-  function handleSelectTab(id: string) {
-    setActiveTabId(id);
-    setSelectedSessionId(id);
-  }
-
   function handleCloseAllTabs() {
+    for (const id of openTabIds) {
+      const embeddedTermId = embeddedTerminalMap[id];
+      if (embeddedTermId) handleDeleteEmbeddedTerminal(embeddedTermId);
+    }
     setOpenTabIds([]);
     setActiveTabId(null);
   }
@@ -341,21 +349,30 @@ function App() {
   function handleCloseTabsToLeft(id: string) {
     const idx = openTabIds.indexOf(id);
     if (idx <= 0) return;
-    const removed = openTabIds.slice(0, idx);
-    setOpenTabIds(openTabIds.slice(idx));
-    if (activeTabId && removed.includes(activeTabId)) {
-      setActiveTabId(id);
+    const toClose = openTabIds.slice(0, idx);
+    for (const cid of toClose) {
+      const embeddedTermId = embeddedTerminalMap[cid];
+      if (embeddedTermId) handleDeleteEmbeddedTerminal(embeddedTermId);
     }
+    setOpenTabIds((prev) => prev.slice(idx));
+    setActiveTabId((prev) => (toClose.includes(prev!) ? id : prev));
   }
 
   function handleCloseTabsToRight(id: string) {
     const idx = openTabIds.indexOf(id);
-    if (idx === -1 || idx === openTabIds.length - 1) return;
-    const removed = openTabIds.slice(idx + 1);
-    setOpenTabIds(openTabIds.slice(0, idx + 1));
-    if (activeTabId && removed.includes(activeTabId)) {
-      setActiveTabId(id);
+    if (idx < 0 || idx >= openTabIds.length - 1) return;
+    const toClose = openTabIds.slice(idx + 1);
+    for (const cid of toClose) {
+      const embeddedTermId = embeddedTerminalMap[cid];
+      if (embeddedTermId) handleDeleteEmbeddedTerminal(embeddedTermId);
     }
+    setOpenTabIds((prev) => prev.slice(0, idx + 1));
+    setActiveTabId((prev) => (toClose.includes(prev!) ? id : prev));
+  }
+
+  function handleSelectTab(id: string) {
+    setActiveTabId(id);
+    setSelectedSessionId(id);
   }
 
   // --- handlers ---
@@ -491,16 +508,14 @@ function App() {
     }
   }
 
-  async function handleQuickCreateSession(fromSession: Session) {
-    const oppositeType = fromSession.sessionType === "claude" ? "terminal" : "claude";
-    const name = `${oppositeType}-${fromSession.name}`;
-    const directory = fromSession.worktreePath || fromSession.directory;
+  async function handleCreateEmbeddedTerminal(parentSession: Session): Promise<Session> {
+    const directory = parentSession.worktreePath || parentSession.directory;
     const req: CreateSessionRequest = {
-      name,
+      name: `term-${parentSession.name}`,
       description: "",
-      repoId: fromSession.repoId,
-      taskId: fromSession.taskId || undefined,
-      sessionType: oppositeType,
+      repoId: parentSession.repoId,
+      taskId: parentSession.taskId || undefined,
+      sessionType: "terminal",
       useWorktree: false,
       skipPermissions: false,
       autoPull: false,
@@ -510,15 +525,25 @@ function App() {
       extraCliArgs: "",
       directoryOverride: directory,
     };
+    const termSession = await api.createSession(req);
+    setEmbeddedTerminalMap(prev => ({ ...prev, [parentSession.id]: termSession.id }));
+    await fetchSessionsForRepo(parentSession.repoId);
+    if (parentSession.taskId) await fetchSessionsForTask(parentSession.taskId);
+    return termSession;
+  }
+
+  async function handleDeleteEmbeddedTerminal(terminalSessionId: string) {
     try {
-      setError(null);
-      const session = await api.createSession(req);
-      await fetchSessionsForRepo(fromSession.repoId);
-      if (fromSession.taskId) await fetchSessionsForTask(fromSession.taskId);
-      handleOpenTab(session.id);
-    } catch (err) {
-      setError(String(err));
-    }
+      await api.stopSession(terminalSessionId).catch(() => {});
+      await api.deleteSession(terminalSessionId);
+    } catch { /* best effort */ }
+    setEmbeddedTerminalMap(prev => {
+      const next = { ...prev };
+      for (const [parentId, termId] of Object.entries(next)) {
+        if (termId === terminalSessionId) delete next[parentId];
+      }
+      return next;
+    });
   }
 
   async function handleArchiveTask(taskId: string) {
@@ -637,6 +662,20 @@ function App() {
     }
   }
 
+  // Filter out embedded terminal sessions from sidebar
+  const embeddedIds = new Set(Object.values(embeddedTerminalMap));
+  const filterEmbedded = (sessions: Session[]) =>
+    sessions.filter(s => !embeddedIds.has(s.id));
+
+  const filteredSessionsByRepo: Record<string, Session[]> = {};
+  for (const [repoId, sessions] of Object.entries(sessionsByRepo)) {
+    filteredSessionsByRepo[repoId] = filterEmbedded(sessions);
+  }
+  const filteredSessionsByTask: Record<string, Session[]> = {};
+  for (const [taskId, sessions] of Object.entries(sessionsByTask)) {
+    filteredSessionsByTask[taskId] = filterEmbedded(sessions);
+  }
+
   // Build tab data for TabBar
   const tabs = openTabIds
     .map((id) => {
@@ -664,8 +703,8 @@ function App() {
       <Sidebar
         repos={repos}
         tasksByRepo={tasksByRepo}
-        sessionsByRepo={sessionsByRepo}
-        sessionsByTask={sessionsByTask}
+        sessionsByRepo={filteredSessionsByRepo}
+        sessionsByTask={filteredSessionsByTask}
         getDisplayStatus={getDisplayStatus}
         actionsBySession={actionsBySession}
         openTabIds={openTabIds}
@@ -691,12 +730,11 @@ function App() {
         onRenameTask={handleRenameTask}
         onRenameSession={handleRenameSession}
         onDropSession={(sessionId, targetTaskId) => handleMoveSessionSelect(sessionId, targetTaskId)}
-        onQuickCreateSession={handleQuickCreateSession}
         onError={(msg) => setError(msg)}
         onOpenSettings={() => setView("settings")}
       />
 
-      <main className="flex-1 flex flex-col relative min-w-0 overflow-hidden" style={{ backgroundColor: "#0A0A0A" }}>
+      <main className="flex-1 flex flex-col relative" style={{ backgroundColor: "#0A0A0A" }}>
         {error && (
           <div
             className="absolute top-0 left-0 right-0 z-40 text-xs px-4 py-2 flex justify-between"
@@ -737,13 +775,12 @@ function App() {
           <SessionPanel
             session={activeSession}
             task={activeTask}
-            onStop={handleStop}
-            onDelete={handleDelete}
-            onClose={() => handleCloseTab(activeSession.id)}
             onStart={handleStart}
             onResume={handleResume}
             onUnarchive={handleUnarchiveSession}
             displayStatus={getDisplayStatus(activeSession.id, activeSession.status)}
+            onCreateEmbeddedTerminal={handleCreateEmbeddedTerminal}
+            onDeleteEmbeddedTerminal={handleDeleteEmbeddedTerminal}
           />
         ) : (
           <EmptyState />

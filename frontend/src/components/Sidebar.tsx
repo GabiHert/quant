@@ -40,7 +40,6 @@ interface SidebarProps {
   onMoveSession?: (sessionId: string, repoId: string) => void;
   onDoubleClickSession?: (id: string) => void;
   onDropSession?: (sessionId: string, targetTaskId: string) => void;
-  onQuickCreateSession?: (session: Session) => void;
   onError?: (msg: string) => void;
   onOpenSettings?: () => void;
 }
@@ -73,7 +72,6 @@ export function Sidebar({
   onMoveSession,
   onDoubleClickSession,
   onDropSession,
-  onQuickCreateSession,
   onError,
   onOpenSettings,
 }: SidebarProps) {
@@ -164,9 +162,9 @@ export function Sidebar({
         {
           type: "item",
           icon: "x",
-          iconColor: "#F59E0B",
-          label: "close",
-          labelColor: "#F59E0B",
+          iconColor: "#EF4444",
+          label: "remove",
+          labelColor: "#EF4444",
           onClick: () => onRemoveRepo(repo.id),
         },
       ],
@@ -251,28 +249,6 @@ export function Sidebar({
     ];
 
     if (!isArchived) {
-      // Quick-create opposite session type
-      if (onQuickCreateSession) {
-        if (session.sessionType === "claude") {
-          items.push({
-            type: "item",
-            icon: ">",
-            iconColor: "#A78BFA",
-            label: "open in terminal",
-            onClick: () => onQuickCreateSession(session),
-          });
-        } else {
-          items.push({
-            type: "item",
-            icon: ">",
-            iconColor: "#8B5CF6",
-            label: "open in claude",
-            onClick: () => onQuickCreateSession(session),
-          });
-        }
-        items.push({ type: "separator" });
-      }
-
       items.push({
         type: "item",
         icon: "$",
@@ -519,7 +495,7 @@ export function Sidebar({
             className="text-sm font-bold lowercase"
             style={{ fontFamily: "'JetBrains Mono', monospace" }}
           >
-            <span style={{ color: "#10B981" }}>{">"}_</span>{" "}
+            <span style={{ color: "#10B981" }}>{">"}</span>{" "}
             <span style={{ color: "#FAFAFA" }}>quant</span>
           </h1>
           <div className="flex items-center gap-3">
