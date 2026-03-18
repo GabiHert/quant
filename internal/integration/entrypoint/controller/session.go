@@ -154,3 +154,8 @@ func (c *sessionController) CheckBranchExists(repoID string, branchName string) 
 func (c *sessionController) GetSessionOutput(id string) (string, error) {
 	return c.sessionManager.GetSessionOutput(id)
 }
+
+// RunShortcut executes a shell command in the session's working directory.
+func (c *sessionController) RunShortcut(sessionID string, command string) error {
+	return c.sessionManager.RunShortcut(sessionID, command)
+}

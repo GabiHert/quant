@@ -156,6 +156,10 @@ export function checkBranchExists(repoId: string, branchName: string): Promise<b
   return callGo(PKG, SESSION_CTRL, "CheckBranchExists", repoId, branchName);
 }
 
+export function runShortcut(sessionId: string, command: string): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "RunShortcut", sessionId, command);
+}
+
 // --- Actions ---
 
 const ACTION_CTRL = "actionController";

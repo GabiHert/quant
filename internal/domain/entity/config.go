@@ -1,12 +1,19 @@
 // Package entity contains domain entities representing core business objects.
 package entity
 
+// Shortcut represents a named shell command for session left-click menus.
+type Shortcut struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
 // Config represents the application configuration settings.
 type Config struct {
 	// General
-	StartOnLogin  bool `json:"startOnLogin"`
-	Notifications bool `json:"notifications"`
-	AutoUpdate    bool `json:"autoUpdate"`
+	StartOnLogin  bool       `json:"startOnLogin"`
+	Notifications bool       `json:"notifications"`
+	AutoUpdate    bool       `json:"autoUpdate"`
+	Shortcuts     []Shortcut `json:"shortcuts"`
 
 	// Git & Branches
 	AutoPull           bool              `json:"autoPull"`
@@ -51,6 +58,7 @@ func NewDefaultConfig() Config {
 		StartOnLogin:  false,
 		Notifications: true,
 		AutoUpdate:    true,
+		Shortcuts:     []Shortcut{},
 
 		// Git & Branches
 		AutoPull:           true,

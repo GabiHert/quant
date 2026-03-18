@@ -28,4 +28,5 @@ type SessionController interface {
 	MoveSessionToTask(sessionID string, newTaskID string) error
 	RenameSession(id string, newName string) error
 	CheckBranchExists(repoID string, branchName string) (bool, error)
+	RunShortcut(sessionID string, command string) error
 }

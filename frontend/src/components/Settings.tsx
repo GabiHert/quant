@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Config, Repo } from "../types";
+import type { Config, Repo, Shortcut } from "../types";
 import * as api from "../api";
 
 type SettingsTab = "general" | "git" | "sessions" | "storage" | "terminal" | "claude";
@@ -167,24 +167,109 @@ export function Settings({ repos, onBack }: Props) {
 // --- Tab Components ---
 
 function GeneralTab({ config, update }: TabProps) {
+  const [newName, setNewName] = useState("");
+  const [newCommand, setNewCommand] = useState("");
+
+  const shortcuts: Shortcut[] = config.shortcuts ?? [];
+
+  function addShortcut() {
+    if (!newName.trim() || !newCommand.trim()) return;
+    update("shortcuts", [...shortcuts, { name: newName.trim(), command: newCommand.trim() }]);
+    setNewName("");
+    setNewCommand("");
+  }
+
+  function removeShortcut(index: number) {
+    update("shortcuts", shortcuts.filter((_, i) => i !== index));
+  }
+
   return (
-    <Section title="application" description="general application behavior and defaults">
-      <SettingRow
-        label="start on login"
-        description="automatically launch quant when you log in"
-        right={<Toggle checked={config.startOnLogin} onChange={(v) => update("startOnLogin", v)} />}
-      />
-      <SettingRow
-        label="notifications"
-        description="show system notifications when sessions complete or error"
-        right={<Toggle checked={config.notifications} onChange={(v) => update("notifications", v)} />}
-      />
-      <SettingRow
-        label="auto update"
-        description="check for updates and upgrade quant automatically on startup"
-        right={<Toggle checked={config.autoUpdate} onChange={(v) => update("autoUpdate", v)} />}
-      />
-    </Section>
+    <>
+      <Section title="application" description="general application behavior and defaults">
+        <SettingRow
+          label="start on login"
+          description="automatically launch quant when you log in"
+          right={<Toggle checked={config.startOnLogin} onChange={(v) => update("startOnLogin", v)} />}
+        />
+        <SettingRow
+          label="notifications"
+          description="show system notifications when sessions complete or error"
+          right={<Toggle checked={config.notifications} onChange={(v) => update("notifications", v)} />}
+        />
+        <SettingRow
+          label="auto update"
+          description="check for updates and upgrade quant automatically on startup"
+          right={<Toggle checked={config.autoUpdate} onChange={(v) => update("autoUpdate", v)} />}
+        />
+      </Section>
+
+      <Section title="left click shortcuts" description="commands executed when left-clicking a session (runs in session folder)">
+        {shortcuts.map((sc, i) => (
+          <div key={i} className="flex items-center justify-between">
+            <div className="flex flex-col" style={{ gap: 2 }}>
+              <span style={{ color: "#FAFAFA", fontSize: 12 }}>{sc.name}</span>
+              <span style={{ color: "#10B981", fontSize: 10 }}>{sc.command}</span>
+            </div>
+            <button
+              onClick={() => removeShortcut(i)}
+              style={{ color: "#EF4444", fontSize: 11, fontFamily: font }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+            >
+              x
+            </button>
+          </div>
+        ))}
+        <div className="flex gap-2" style={{ marginTop: shortcuts.length > 0 ? 4 : 0 }}>
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="name"
+            onKeyDown={(e) => e.key === "Enter" && addShortcut()}
+            style={{
+              flex: 1,
+              backgroundColor: "#1F1F1F",
+              border: "1px solid #2a2a2a",
+              color: "#FAFAFA",
+              fontSize: 11,
+              fontFamily: font,
+              padding: "4px 8px",
+              outline: "none",
+            }}
+          />
+          <input
+            value={newCommand}
+            onChange={(e) => setNewCommand(e.target.value)}
+            placeholder="command"
+            onKeyDown={(e) => e.key === "Enter" && addShortcut()}
+            style={{
+              flex: 2,
+              backgroundColor: "#1F1F1F",
+              border: "1px solid #2a2a2a",
+              color: "#10B981",
+              fontSize: 11,
+              fontFamily: font,
+              padding: "4px 8px",
+              outline: "none",
+            }}
+          />
+          <button
+            onClick={addShortcut}
+            style={{
+              color: "#4B5563",
+              fontSize: 11,
+              fontFamily: font,
+              border: "1px dashed #2a2a2a",
+              padding: "4px 10px",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#6B7280")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#4B5563")}
+          >
+            + add
+          </button>
+        </div>
+      </Section>
+    </>
   );
 }
 

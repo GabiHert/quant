@@ -7,6 +7,7 @@ import type {
   CreateRepoRequest,
   CreateTaskRequest,
   CreateSessionRequest,
+  Shortcut,
 } from "./types";
 import * as api from "./api";
 import { Sidebar } from "./components/Sidebar";
@@ -54,6 +55,8 @@ function App() {
   const outputTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   // Embedded terminal tracking: parentSessionId -> terminalSessionId
   const [embeddedTerminalMap, setEmbeddedTerminalMap] = useState<Record<string, string>>({});
+
+  const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
 
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +153,11 @@ function App() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Reload shortcuts from config on startup and whenever user leaves settings.
+  useEffect(() => {
+    api.getConfig().then((cfg) => setShortcuts(cfg.shortcuts ?? [])).catch(console.error);
+  }, [view]);
 
   // poll sessions every 3s
   useEffect(() => {
@@ -732,6 +740,7 @@ function App() {
         onDropSession={(sessionId, targetTaskId) => handleMoveSessionSelect(sessionId, targetTaskId)}
         onError={(msg) => setError(msg)}
         onOpenSettings={() => setView("settings")}
+        shortcuts={shortcuts}
       />
 
       <main className="flex-1 flex flex-col relative" style={{ backgroundColor: "#0A0A0A" }}>

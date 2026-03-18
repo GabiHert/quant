@@ -4,6 +4,7 @@ package service
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -398,6 +399,35 @@ func (s *sessionManagerService) CheckBranchExists(repoID string, branchName stri
 	}
 
 	return strings.TrimSpace(string(output)) != "", nil
+}
+
+// RunShortcut executes a shell command in the session's working directory.
+func (s *sessionManagerService) RunShortcut(sessionID string, command string) error {
+	session, err := s.findSession.FindByID(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	dir := session.WorktreePath
+	if dir == "" {
+		dir = session.Directory
+	}
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+
+	cmd := exec.Command(shell, "-l", "-c", command)
+	cmd.Dir = dir
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to run shortcut: %w", err)
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 // GetSessionOutput returns the persisted terminal output for a session.

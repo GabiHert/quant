@@ -80,11 +80,17 @@ export interface CreateSessionRequest {
   directoryOverride?: string;
 }
 
+export interface Shortcut {
+  name: string;
+  command: string;
+}
+
 export interface Config {
   // General
   startOnLogin: boolean;
   notifications: boolean;
   autoUpdate: boolean;
+  shortcuts: Shortcut[];
 
   // Git & Branches
   autoPull: boolean;
