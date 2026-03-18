@@ -522,7 +522,24 @@ func (s *sessionManagerService) GitPush(sessionID string) error {
 
 	cmd := exec.Command("git", "push")
 	cmd.Dir = dir
-	if output, err := cmd.CombinedOutput(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// If no upstream is set, retry with --set-upstream origin <branch>
+		if strings.Contains(string(output), "no upstream branch") || strings.Contains(string(output), "has no upstream branch") {
+			branchCmd := exec.Command("git", "branch", "--show-current")
+			branchCmd.Dir = dir
+			branchOut, branchErr := branchCmd.Output()
+			if branchErr != nil {
+				return fmt.Errorf("git push failed and could not determine branch: %w: %s", err, string(output))
+			}
+			branch := strings.TrimSpace(string(branchOut))
+			retryCmd := exec.Command("git", "push", "--set-upstream", "origin", branch)
+			retryCmd.Dir = dir
+			if retryOutput, retryErr := retryCmd.CombinedOutput(); retryErr != nil {
+				return fmt.Errorf("git push failed: %w: %s", retryErr, string(retryOutput))
+			}
+			return nil
+		}
 		return fmt.Errorf("git push failed: %w: %s", err, string(output))
 	}
 
