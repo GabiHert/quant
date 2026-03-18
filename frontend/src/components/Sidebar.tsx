@@ -424,9 +424,9 @@ export function Sidebar({
     setContextMenu({ x: e.clientX, y: e.clientY, items });
   }
 
-  // Filter sessions based on archive state
+  // Filter sessions based on archive state; terminal sessions are never shown in the sidebar
   function filterSessions(sessions: Session[]): Session[] {
-    return sessions.filter((s) => showArchived ? !!s.archivedAt : !s.archivedAt);
+    return sessions.filter((s) => s.sessionType !== "terminal" && (showArchived ? !!s.archivedAt : !s.archivedAt));
   }
 
   // Filter tasks: in active view, show non-archived tasks.
