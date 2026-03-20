@@ -127,4 +127,4 @@ On macOS, the app can also be found as `build/bin/quant.app`.
 
 Quant stores its data at `~/.quant/quant.db` (SQLite with WAL journal mode).
 
-
+test

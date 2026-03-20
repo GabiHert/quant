@@ -21,8 +21,10 @@ interface Props {
   onResume: (id: string, rows: number, cols: number) => void;
   onUnarchive?: (id: string) => void;
   displayStatus: import("./StatusBadge").DisplayStatus;
+  embeddedTerminalSession?: Session | null;
+  terminalPaneOpen?: boolean;
+  onTerminalPaneOpenChange?: (open: boolean) => void;
   onCreateEmbeddedTerminal: (parentSession: Session) => Promise<Session>;
-  onDeleteEmbeddedTerminal: (terminalSessionId: string) => void;
 }
 
 export function SessionPanel({
@@ -32,8 +34,10 @@ export function SessionPanel({
   onResume,
   onUnarchive,
   displayStatus,
+  embeddedTerminalSession,
+  terminalPaneOpen = false,
+  onTerminalPaneOpenChange,
   onCreateEmbeddedTerminal,
-  onDeleteEmbeddedTerminal,
 }: Props) {
   const [autoScroll, setAutoScroll] = useState(true);
   const [termConfig, setTermConfig] = useState<Config | null>(null);
@@ -58,12 +62,13 @@ export function SessionPanel({
     }).catch(() => {});
   }, []);
 
-  // Close embedded terminal when parent session changes
+  // When session changes, restore open state and terminal session from persistent props
   useEffect(() => {
-    if (splitState.open && splitState.terminalSession) {
-      onDeleteEmbeddedTerminal(splitState.terminalSession.id);
-      setSplitState(prev => ({ ...prev, open: false, terminalSession: null }));
-    }
+    setSplitState(prev => ({
+      ...prev,
+      open: terminalPaneOpen && !!(embeddedTerminalSession || prev.terminalSession),
+      terminalSession: embeddedTerminalSession || null,
+    }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 
@@ -115,19 +120,24 @@ export function SessionPanel({
 
   async function handleOpenTerminal() {
     if (splitState.open) return;
+    const existing = splitState.terminalSession || embeddedTerminalSession;
+    if (existing) {
+      setSplitState(prev => ({ ...prev, open: true, terminalSession: existing }));
+      onTerminalPaneOpenChange?.(true);
+      return;
+    }
     try {
       const termSession = await onCreateEmbeddedTerminal(session);
       setSplitState(prev => ({ ...prev, open: true, terminalSession: termSession }));
+      onTerminalPaneOpenChange?.(true);
     } catch {
       // Failed to create embedded terminal
     }
   }
 
   function handleCloseTerminal() {
-    if (splitState.terminalSession) {
-      onDeleteEmbeddedTerminal(splitState.terminalSession.id);
-    }
-    setSplitState(prev => ({ ...prev, open: false, terminalSession: null }));
+    setSplitState(prev => ({ ...prev, open: false }));
+    onTerminalPaneOpenChange?.(false);
   }
 
   function handleToggleLayout() {

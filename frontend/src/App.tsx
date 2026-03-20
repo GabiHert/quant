@@ -61,6 +61,8 @@ function App() {
   const outputTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   // Embedded terminal tracking: parentSessionId -> terminalSessionId
   const [embeddedTerminalMap, setEmbeddedTerminalMap] = useState<Record<string, string>>({});
+  // Track which sessions have the terminal pane open: parentSessionId -> boolean
+  const [terminalPaneOpenMap, setTerminalPaneOpenMap] = useState<Record<string, boolean>>({});
 
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [commitMessagePrefix, setCommitMessagePrefix] = useState("");
@@ -88,6 +90,19 @@ function App() {
   const activeTask = activeSession?.taskId
     ? findTask(activeSession.taskId, tasksByRepo)
     : null;
+
+  // find embedded terminal session for the active session (if any)
+  const activeEmbeddedTerminalSession = activeSession
+    ? (findSession(embeddedTerminalMap[activeSession.id], sessionsByRepo, sessionsByTask) ?? null)
+    : null;
+
+  // whether the terminal pane is open for the active session
+  const activeTerminalPaneOpen = activeSession ? (terminalPaneOpenMap[activeSession.id] ?? false) : false;
+
+  function handleTerminalPaneOpenChange(open: boolean) {
+    if (!activeSession) return;
+    setTerminalPaneOpenMap(prev => ({ ...prev, [activeSession.id]: open }));
+  }
 
   // --- data fetching ---
 
@@ -854,8 +869,10 @@ function App() {
             onResume={handleResume}
             onUnarchive={handleUnarchiveSession}
             displayStatus={getDisplayStatus(activeSession.id, activeSession.status)}
+            embeddedTerminalSession={activeEmbeddedTerminalSession}
+            terminalPaneOpen={activeTerminalPaneOpen}
+            onTerminalPaneOpenChange={handleTerminalPaneOpenChange}
             onCreateEmbeddedTerminal={handleCreateEmbeddedTerminal}
-            onDeleteEmbeddedTerminal={handleDeleteEmbeddedTerminal}
           />
         ) : (
           <EmptyState />
