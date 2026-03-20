@@ -35,4 +35,9 @@ type SessionController interface {
 	GetUnpushedCommits(sessionID string) ([]string, error)
 	GetCurrentBranch(sessionID string) (string, error)
 	ListBranches(sessionID string) ([]string, error)
+	GitDiffFiles(sessionID string) ([]dto.DiffFileResponse, error)
+	GitDiffFile(sessionID string, filePath string) (string, error)
+	GitGetFileContent(sessionID string, filePath string, version string) (string, error)
+	GitSaveFileContent(sessionID string, filePath string, content string) error
+	GitCommitFiles(sessionID string, message string, files []string) error
 }

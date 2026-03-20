@@ -22,6 +22,7 @@ import { ConfirmModal } from "./components/ConfirmModal";
 import { RenameModal } from "./components/RenameModal";
 import { RenameTaskModal } from "./components/RenameTaskModal";
 import { Settings } from "./components/Settings";
+import { DiffView } from "./components/DiffView";
 import { GitCommitModal } from "./components/GitCommitModal";
 import { GitPullModal } from "./components/GitPullModal";
 import { GitPushModal } from "./components/GitPushModal";
@@ -39,7 +40,7 @@ type ModalState =
   | { type: "gitPull"; sessionId: string; currentBranch: string }
   | { type: "gitPush"; sessionId: string; currentBranch: string };
 
-type View = "dashboard" | "settings";
+type View = "dashboard" | "settings" | "diff";
 
 function App() {
   const [view, setView] = useState<View>("dashboard");
@@ -64,6 +65,7 @@ function App() {
   // Track which sessions have the terminal pane open: parentSessionId -> boolean
   const [terminalPaneOpenMap, setTerminalPaneOpenMap] = useState<Record<string, boolean>>({});
 
+  const [diffSession, setDiffSession] = useState<{ id: string; name: string } | null>(null);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [commitMessagePrefix, setCommitMessagePrefix] = useState("");
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -698,8 +700,9 @@ function App() {
     }
   }
 
-  async function openGitCommitModal(sessionId: string, sessionName: string) {
-    setModal({ type: "gitCommit", sessionId, sessionName });
+  function openGitCommitModal(sessionId: string, sessionName: string) {
+    setDiffSession({ id: sessionId, name: sessionName });
+    setView("diff");
   }
 
   async function openGitPullModal(sessionId: string) {
@@ -723,7 +726,6 @@ function App() {
   async function handleGitCommit(sessionId: string, message: string, pushAfter: boolean) {
     await api.gitCommit(sessionId, message);
     if (pushAfter) await api.gitPush(sessionId);
-    setModal({ type: "none" });
   }
 
   async function handleGitPull(sessionId: string, branch: string) {
@@ -782,6 +784,17 @@ function App() {
 
   if (view === "settings") {
     return <Settings repos={repos} onBack={() => { fetchShortcuts(); setView("dashboard"); }} />;
+  }
+
+  if (view === "diff" && diffSession) {
+    return (
+      <DiffView
+        sessionId={diffSession.id}
+        sessionName={diffSession.name}
+        commitMessagePrefix={commitMessagePrefix}
+        onBack={() => setView("dashboard")}
+      />
+    );
   }
 
   return (

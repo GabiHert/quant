@@ -4,6 +4,7 @@ import type {
   Session,
   Action,
   Config,
+  DiffFile,
   CreateRepoRequest,
   CreateTaskRequest,
   CreateSessionRequest,
@@ -182,6 +183,26 @@ export function getCurrentBranch(sessionId: string): Promise<string> {
 
 export function listBranches(sessionId: string): Promise<string[]> {
   return callGo(PKG, SESSION_CTRL, "ListBranches", sessionId);
+}
+
+export function gitDiffFiles(sessionId: string): Promise<DiffFile[]> {
+  return callGo(PKG, SESSION_CTRL, "GitDiffFiles", sessionId);
+}
+
+export function gitDiffFile(sessionId: string, filePath: string): Promise<string> {
+  return callGo(PKG, SESSION_CTRL, "GitDiffFile", sessionId, filePath);
+}
+
+export function gitGetFileContent(sessionId: string, filePath: string, version: string): Promise<string> {
+  return callGo(PKG, SESSION_CTRL, "GitGetFileContent", sessionId, filePath, version);
+}
+
+export function gitSaveFileContent(sessionId: string, filePath: string, content: string): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "GitSaveFileContent", sessionId, filePath, content);
+}
+
+export function gitCommitFiles(sessionId: string, message: string, files: string[]): Promise<void> {
+  return callGo(PKG, SESSION_CTRL, "GitCommitFiles", sessionId, message, files);
 }
 
 // --- Actions ---

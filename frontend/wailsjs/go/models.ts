@@ -188,6 +188,22 @@ export namespace dto {
 	        this.name = source["name"];
 	    }
 	}
+	export class DiffFileResponse {
+	    path: string;
+	    status: string;
+	    oldPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiffFileResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.status = source["status"];
+	        this.oldPath = source["oldPath"];
+	    }
+	}
 	export class RepoResponse {
 	    id: string;
 	    name: string;

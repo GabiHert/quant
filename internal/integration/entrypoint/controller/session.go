@@ -190,3 +190,32 @@ func (c *sessionController) GetCurrentBranch(sessionID string) (string, error) {
 func (c *sessionController) ListBranches(sessionID string) ([]string, error) {
 	return c.sessionManager.ListBranches(sessionID)
 }
+
+// GitDiffFiles returns the list of changed files in the session's working directory as response DTOs.
+func (c *sessionController) GitDiffFiles(sessionID string) ([]dto.DiffFileResponse, error) {
+	files, err := c.sessionManager.GitDiffFiles(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return dto.DiffFileResponseListFromEntities(files), nil
+}
+
+// GitDiffFile returns the unified diff string for a single file in the session's working directory.
+func (c *sessionController) GitDiffFile(sessionID string, filePath string) (string, error) {
+	return c.sessionManager.GitDiffFile(sessionID, filePath)
+}
+
+// GitGetFileContent returns the content of a file at the given version ("head" or "current").
+func (c *sessionController) GitGetFileContent(sessionID string, filePath string, version string) (string, error) {
+	return c.sessionManager.GitGetFileContent(sessionID, filePath, version)
+}
+
+// GitSaveFileContent writes content to a file within the session's working directory.
+func (c *sessionController) GitSaveFileContent(sessionID string, filePath string, content string) error {
+	return c.sessionManager.GitSaveFileContent(sessionID, filePath, content)
+}
+
+// GitCommitFiles stages and commits only the specified files with the given message.
+func (c *sessionController) GitCommitFiles(sessionID string, message string, files []string) error {
+	return c.sessionManager.GitCommitFiles(sessionID, message, files)
+}

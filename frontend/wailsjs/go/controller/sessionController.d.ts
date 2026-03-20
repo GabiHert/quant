@@ -21,9 +21,19 @@ export function GetUnpushedCommits(arg1:string):Promise<Array<string>>;
 
 export function GitCommit(arg1:string,arg2:string):Promise<void>;
 
+export function GitCommitFiles(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;
+
+export function GitDiffFile(arg1:string,arg2:string):Promise<string>;
+
+export function GitDiffFiles(arg1:string):Promise<Array<dto.DiffFileResponse>>;
+
+export function GitGetFileContent(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function GitPull(arg1:string,arg2:string):Promise<void>;
 
 export function GitPush(arg1:string):Promise<void>;
+
+export function GitSaveFileContent(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function ListBranches(arg1:string):Promise<Array<string>>;
 
