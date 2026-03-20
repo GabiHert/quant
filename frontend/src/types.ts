@@ -80,6 +80,12 @@ export interface CreateSessionRequest {
   directoryOverride?: string;
 }
 
+export interface DiffFile {
+  path: string;
+  status: string; // "M" | "A" | "D" | "R" | "?"
+  oldPath: string;
+}
+
 export interface Shortcut {
   name: string;
   command: string;

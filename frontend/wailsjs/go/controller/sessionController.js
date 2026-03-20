@@ -38,12 +38,32 @@ export function GitCommit(arg1, arg2) {
   return window['go']['controller']['sessionController']['GitCommit'](arg1, arg2);
 }
 
+export function GitCommitFiles(arg1, arg2, arg3) {
+  return window['go']['controller']['sessionController']['GitCommitFiles'](arg1, arg2, arg3);
+}
+
+export function GitDiffFile(arg1, arg2) {
+  return window['go']['controller']['sessionController']['GitDiffFile'](arg1, arg2);
+}
+
+export function GitDiffFiles(arg1) {
+  return window['go']['controller']['sessionController']['GitDiffFiles'](arg1);
+}
+
+export function GitGetFileContent(arg1, arg2, arg3) {
+  return window['go']['controller']['sessionController']['GitGetFileContent'](arg1, arg2, arg3);
+}
+
 export function GitPull(arg1, arg2) {
   return window['go']['controller']['sessionController']['GitPull'](arg1, arg2);
 }
 
 export function GitPush(arg1) {
   return window['go']['controller']['sessionController']['GitPush'](arg1);
+}
+
+export function GitSaveFileContent(arg1, arg2, arg3) {
+  return window['go']['controller']['sessionController']['GitSaveFileContent'](arg1, arg2, arg3);
 }
 
 export function ListBranches(arg1) {

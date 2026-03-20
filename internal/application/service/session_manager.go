@@ -647,3 +647,196 @@ func (s *sessionManagerService) ListBranches(sessionID string) ([]string, error)
 	}
 	return branches, nil
 }
+
+// getWorkDir returns the effective working directory for a session.
+// It prefers WorktreePath when set, falling back to Directory.
+func getWorkDir(session *entity.Session) string {
+	if session.WorktreePath != "" {
+		return session.WorktreePath
+	}
+	return session.Directory
+}
+
+// GitDiffFiles returns the list of changed files in the session's working directory.
+// It runs `git status --porcelain` and parses the output into DiffFile entities.
+func (s *sessionManagerService) GitDiffFiles(sessionID string) ([]entity.DiffFile, error) {
+	session, err := s.findSession.FindByID(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find session: %w", err)
+	}
+	if session == nil {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	dir := getWorkDir(session)
+
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git status failed: %w", err)
+	}
+
+	var files []entity.DiffFile
+	for _, line := range strings.Split(string(output), "\n") {
+		if len(line) < 3 {
+			continue
+		}
+		// Porcelain format: XY <path> or XY <old> -> <new> for renames
+		xy := line[:2]
+		rest := line[3:]
+
+		// Determine the representative status character (use index column, prefer
+		// the working-tree column when the index column is blank).
+		statusChar := strings.TrimSpace(xy)
+		if statusChar == "" {
+			continue
+		}
+		// Take the first non-space character as the canonical status.
+		status := string([]rune(statusChar)[0])
+
+		var path, oldPath string
+		if status == "R" || strings.Contains(rest, " -> ") {
+			status = "R"
+			parts := strings.SplitN(rest, " -> ", 2)
+			if len(parts) == 2 {
+				oldPath = strings.Trim(parts[0], "\"")
+				path = strings.Trim(parts[1], "\"")
+			} else {
+				path = strings.Trim(rest, "\"")
+			}
+		} else {
+			path = strings.Trim(rest, "\"")
+		}
+
+		files = append(files, entity.DiffFile{
+			Path:    path,
+			Status:  status,
+			OldPath: oldPath,
+		})
+	}
+
+	if files == nil {
+		files = []entity.DiffFile{}
+	}
+	return files, nil
+}
+
+// GitDiffFile returns the unified diff for a single file in the session's working directory.
+// For tracked files it runs `git diff HEAD -- <filePath>`. For untracked files it returns
+// an empty string.
+func (s *sessionManagerService) GitDiffFile(sessionID string, filePath string) (string, error) {
+	session, err := s.findSession.FindByID(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to find session: %w", err)
+	}
+	if session == nil {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	dir := getWorkDir(session)
+
+	cmd := exec.Command("git", "diff", "HEAD", "--", filePath)
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		// File may be untracked or newly staged — return empty diff without error.
+		return "", nil
+	}
+
+	return string(output), nil
+}
+
+// GitGetFileContent returns the content of a file at a given version.
+// When version is "head", it runs `git show HEAD:<filePath>` to retrieve the committed
+// version. When version is "current", it reads the file directly from disk.
+func (s *sessionManagerService) GitGetFileContent(sessionID string, filePath string, version string) (string, error) {
+	session, err := s.findSession.FindByID(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("failed to find session: %w", err)
+	}
+	if session == nil {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	dir := getWorkDir(session)
+
+	switch version {
+	case "head":
+		cmd := exec.Command("git", "show", "HEAD:"+filePath)
+		cmd.Dir = dir
+		output, err := cmd.Output()
+		if err != nil {
+			// File may not exist at HEAD (new file) — return empty content.
+			return "", nil
+		}
+		return string(output), nil
+
+	case "current":
+		fullPath := dir + "/" + filePath
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
+		}
+		return string(data), nil
+
+	default:
+		return "", fmt.Errorf("unknown version %q: must be 'head' or 'current'", version)
+	}
+}
+
+// GitSaveFileContent writes content to a file within the session's working directory.
+func (s *sessionManagerService) GitSaveFileContent(sessionID string, filePath string, content string) error {
+	session, err := s.findSession.FindByID(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	dir := getWorkDir(session)
+	fullPath := dir + "/" + filePath
+
+	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+
+	return nil
+}
+
+// GitCommitFiles stages the given files and commits them with the provided message.
+// Unlike GitCommit (which stages all changes with `git add -A`), this method only
+// stages the explicitly specified files, giving the user fine-grained control over
+// what enters the commit.
+func (s *sessionManagerService) GitCommitFiles(sessionID string, message string, files []string) error {
+	session, err := s.findSession.FindByID(sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to find session: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	dir := getWorkDir(session)
+
+	if len(files) == 0 {
+		return fmt.Errorf("no files specified to commit")
+	}
+
+	// Stage only the selected files.
+	addArgs := append([]string{"add", "--"}, files...)
+	addCmd := exec.Command("git", addArgs...)
+	addCmd.Dir = dir
+	if output, err := addCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git add failed: %w: %s", err, string(output))
+	}
+
+	cmd := exec.Command("git", "commit", "-m", message)
+	cmd.Dir = dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git commit failed: %w: %s", err, string(output))
+	}
+
+	return nil
+}
