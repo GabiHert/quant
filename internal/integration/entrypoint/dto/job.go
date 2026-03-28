@@ -25,6 +25,7 @@ type CreateJobRequest struct {
 	ClaudeCommand       string            `json:"claudeCommand"`
 	SuccessPrompt       string            `json:"successPrompt"`
 	FailurePrompt       string            `json:"failurePrompt"`
+	MetadataPrompt      string            `json:"metadataPrompt"`
 	Interpreter         string            `json:"interpreter"`
 	ScriptContent       string            `json:"scriptContent"`
 	EnvVariables        map[string]string `json:"envVariables"`
