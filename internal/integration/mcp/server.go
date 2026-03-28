@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -49,9 +50,11 @@ func (s *QuantMCPServer) Start() error {
 	return nil
 }
 
-// Stop gracefully shuts down the HTTP server.
+// Stop gracefully shuts down the HTTP server with a 2-second timeout.
 func (s *QuantMCPServer) Stop() error {
-	return s.httpServer.Shutdown(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return s.httpServer.Shutdown(ctx)
 }
 
 func (s *QuantMCPServer) registerTools(mcpServer *server.MCPServer) {
