@@ -613,17 +613,24 @@ func (s *jobManagerService) evaluateJobResult(job *entity.Job, taskOutput string
 		evalPrompt.WriteString("- No evaluation criteria defined. Set result to \"success\".\n")
 	}
 
-	// Metadata instructions
+	// Metadata instructions — be very prescriptive about the exact keys
 	evalPrompt.WriteString("\nMETADATA EXTRACTION:\n")
 	if job.MetadataPrompt != "" {
-		evalPrompt.WriteString(fmt.Sprintf("Extract these fields into the metadata object: %s\n", job.MetadataPrompt))
+		evalPrompt.WriteString(fmt.Sprintf("Extract EXACTLY these fields into the metadata object (use these exact key names): %s\n", job.MetadataPrompt))
+		evalPrompt.WriteString("You MUST use the exact field names specified above. Do not rename them or add extra fields.\n")
 	} else {
-		evalPrompt.WriteString("Extract a brief summary and any key data points into the metadata object.\n")
+		evalPrompt.WriteString("Add a 'summary' field with a one-sentence description of what happened.\n")
 	}
-	evalPrompt.WriteString("Use simple string/number/boolean values. Use snake_case keys. Keep it concise.\n")
+	evalPrompt.WriteString("Use simple string/number/boolean/array values only. Use snake_case keys.\n")
 
-	evalPrompt.WriteString("\nRESPOND WITH ONLY THIS JSON (no other text):\n")
-	evalPrompt.WriteString("{\"result\":\"success\",\"metadata\":{\"key\":\"value\"}}\n")
+	// Build a concrete example that matches the user's metadata prompt
+	evalPrompt.WriteString("\nRESPOND WITH ONLY A RAW JSON OBJECT (no markdown, no code blocks, no explanation):\n")
+	if job.MetadataPrompt != "" {
+		// Parse the metadata prompt to extract field names and generate a matching example
+		evalPrompt.WriteString(fmt.Sprintf("{\"result\":\"success\",\"metadata\":{%s}}\n", buildMetadataExample(job.MetadataPrompt)))
+	} else {
+		evalPrompt.WriteString("{\"result\":\"success\",\"metadata\":{\"summary\":\"brief description\"}}\n")
+	}
 
 	claudeCmd := job.ClaudeCommand
 	if claudeCmd == "" {
@@ -727,6 +734,61 @@ func (s *jobManagerService) evaluateJobResult(job *entity.Job, taskOutput string
 	}
 
 	return &eval, nil
+}
+
+// buildMetadataExample parses the user's metadata prompt to generate a JSON example
+// with the exact field names they specified. This helps Claude follow the schema.
+func buildMetadataExample(metadataPrompt string) string {
+	// Common patterns: "Extract: field1 (type), field2 (type)" or "field1, field2, field3"
+	// We extract words that look like field names and generate placeholder values
+	prompt := strings.ToLower(metadataPrompt)
+
+	// Remove common prefixes
+	for _, prefix := range []string{"extract:", "extract ", "fields:", "include:"} {
+		if strings.HasPrefix(prompt, prefix) {
+			prompt = strings.TrimPrefix(prompt, prefix)
+		}
+	}
+
+	// Split by common delimiters
+	parts := strings.FieldsFunc(prompt, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n'
+	})
+
+	var fields []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Extract the field name (first word or words before parentheses)
+		name := part
+		if idx := strings.Index(name, "("); idx > 0 {
+			name = strings.TrimSpace(name[:idx])
+		}
+		// Convert to snake_case
+		name = strings.ReplaceAll(strings.TrimSpace(name), " ", "_")
+		// Remove non-alphanumeric chars except underscores
+		cleaned := strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+				return r
+			}
+			return -1
+		}, name)
+		if cleaned != "" && len(cleaned) < 40 {
+			fields = append(fields, cleaned)
+		}
+	}
+
+	if len(fields) == 0 {
+		return "\"summary\":\"brief description\""
+	}
+
+	var examples []string
+	for _, f := range fields {
+		examples = append(examples, fmt.Sprintf("\"%s\":\"...\"", f))
+	}
+	return strings.Join(examples, ",")
 }
 
 // executeBashJob runs a bash script and captures its output.

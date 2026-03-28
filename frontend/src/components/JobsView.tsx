@@ -339,6 +339,14 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
     };
   }, []);
 
+  // Refresh jobs list periodically so canvas stays in sync with external changes (MCP, scheduler)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      onRefreshJobs();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [onRefreshJobs]);
+
   // Poll for running jobs on the canvas and detect trigger firings
   const prevRunningRef = useRef<Set<string>>(new Set());
   useEffect(() => {

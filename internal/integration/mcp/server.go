@@ -83,7 +83,16 @@ Jobs run autonomously with permissions bypassed. After creating, use update_job 
 
 Trigger chains: when a job finishes, it can trigger other jobs based on the outcome. Use onSuccess/onFailure to build pipelines like: health-check → deploy (on success) → notify (on deploy success), health-check → incident-report (on failure).
 
-For claude jobs, after execution a second evaluation prompt runs to determine success/failure and extract structured metadata that gets passed to triggered jobs, saving tokens vs passing raw output.`),
+For claude jobs, after execution a second evaluation prompt runs to determine success/failure and extract structured metadata that gets passed to triggered jobs, saving tokens vs passing raw output.
+
+IMPORTANT: timeoutSeconds must be at least 60. For claude jobs, use 600 (10 min) as the default — they need time for the main task plus a follow-up evaluation call. 5 min is tight, 10 min is safe. For bash jobs, 60-120s is usually enough.
+
+The Quant canvas UI auto-refreshes every 10 seconds and auto-layouts new jobs that don't have positions yet. After creating multiple jobs, they will appear organized on the canvas automatically.
+
+Workflow for building pipelines:
+1. Create all jobs first (they appear on canvas automatically)
+2. Wire triggers with update_job onSuccess/onFailure
+3. Use run_job to test the entry point — downstream jobs fire automatically`),
 			mcp.WithString("name", mcp.Required(), mcp.Description("Unique job name (e.g. health-check, deploy-staging, code-review-bot)")),
 			mcp.WithString("description", mcp.Description("What the job does — shown in the canvas UI")),
 			mcp.WithString("type", mcp.Required(), mcp.Description("'claude' for Claude CLI sessions, 'bash' for shell scripts")),
@@ -93,7 +102,7 @@ For claude jobs, after execution a second evaluation prompt runs to determine su
 			mcp.WithString("scheduleType", mcp.Description("'recurring' (repeats on interval/cron) or 'one_time' (runs once then auto-disables)")),
 			mcp.WithString("cronExpression", mcp.Description("Cron expression (e.g. '0 9 * * 1-5' for weekdays 9am). Alternative to scheduleInterval")),
 			mcp.WithNumber("scheduleInterval", mcp.Description("Repeat interval in minutes (e.g. 30 for every 30min). Alternative to cronExpression")),
-			mcp.WithNumber("timeoutSeconds", mcp.Description("Max execution time in seconds (default: 1800). Job is killed after this")),
+			mcp.WithNumber("timeoutSeconds", mcp.Description("Max execution time in seconds. Claude jobs: use 600 (10 min, safe default). Bash jobs: 60-120s. Never set below 60. Job is killed after this")),
 			// Claude config
 			mcp.WithString("prompt", mcp.Description("Main task prompt for claude jobs. Be specific about what to do and what tools to use")),
 			mcp.WithNumber("maxRetries", mcp.Description("Retry count on failure (claude only). Each retry includes previous output as context")),
