@@ -13,6 +13,7 @@ import (
 
 	"quant/internal/infra/db"
 	"quant/internal/infra/dependency"
+	quantmcp "quant/internal/integration/mcp"
 	"quant/internal/integration/persistence"
 )
 
@@ -27,6 +28,9 @@ func Run(assets embed.FS) error {
 	// On startup, mark any "running" sessions as "paused" since their processes
 	// died when the app was closed. Output is preserved on disk for replay.
 	_, _ = database.Exec(`UPDATE sessions SET status = 'paused', pid = 0 WHERE status = 'running'`)
+
+	// Mark any "running" job runs as "failed" since they were interrupted by app restart.
+	_, _ = database.Exec(`UPDATE job_runs SET status = 'failed', error_message = 'interrupted by app restart' WHERE status = 'running'`)
 
 	// Load config early to check auto-update preference.
 	configPersistence := persistence.NewConfigPersistence()
@@ -44,7 +48,20 @@ func Run(assets embed.FS) error {
 	taskCtrl := injector.TaskController()
 	actionCtrl := injector.ActionController()
 	configCtrl := injector.ConfigController()
+	jobCtrl := injector.JobController()
 	processManager := injector.ProcessManager()
+
+	// Start MCP server for external AI tools to manage jobs.
+	mcpServer := quantmcp.NewQuantMCPServer(injector.JobManager())
+	go func() {
+		if err := mcpServer.Start(); err != nil {
+			fmt.Printf("MCP server error: %v\n", err)
+		}
+	}()
+
+	// Start job scheduler for recurring/one-time scheduled jobs.
+	jobScheduler := injector.JobScheduler()
+	jobScheduler.Start()
 
 	err = wails.Run(&options.App{
 		Title:  ">_ quant",
@@ -61,6 +78,7 @@ func Run(assets embed.FS) error {
 			taskCtrl.OnStartup(ctx)
 			actionCtrl.OnStartup(ctx)
 			configCtrl.OnStartup(ctx)
+			jobCtrl.OnStartup(ctx)
 		},
 		OnShutdown: func(ctx context.Context) {
 			sessionCtrl.OnShutdown(ctx)
@@ -68,6 +86,9 @@ func Run(assets embed.FS) error {
 			taskCtrl.OnShutdown(ctx)
 			actionCtrl.OnShutdown(ctx)
 			configCtrl.OnShutdown(ctx)
+			jobCtrl.OnShutdown(ctx)
+			jobScheduler.Stop()
+			_ = mcpServer.Stop()
 		},
 		Bind: []interface{}{
 			sessionCtrl,
@@ -75,6 +96,7 @@ func Run(assets embed.FS) error {
 			taskCtrl,
 			actionCtrl,
 			configCtrl,
+			jobCtrl,
 		},
 	})
 	if err != nil {

@@ -119,8 +119,78 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("failed to create actions table: %w", err)
 	}
 
-	// Add repo_id and task_id columns to existing sessions table (idempotent).
+	jobsTable := `
+	CREATE TABLE IF NOT EXISTS jobs (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		type TEXT NOT NULL,
+		working_directory TEXT NOT NULL DEFAULT '',
+		schedule_enabled INTEGER NOT NULL DEFAULT 0,
+		schedule_type TEXT NOT NULL DEFAULT '',
+		cron_expression TEXT NOT NULL DEFAULT '',
+		schedule_interval INTEGER NOT NULL DEFAULT 0,
+		schedule_start_time TEXT,
+		timeout_seconds INTEGER NOT NULL DEFAULT 0,
+		prompt TEXT NOT NULL DEFAULT '',
+		allow_bypass INTEGER NOT NULL DEFAULT 0,
+		autonomous_mode INTEGER NOT NULL DEFAULT 0,
+		max_retries INTEGER NOT NULL DEFAULT 0,
+		model TEXT NOT NULL DEFAULT '',
+		override_repo_command TEXT NOT NULL DEFAULT '',
+		claude_command TEXT NOT NULL DEFAULT '',
+		interpreter TEXT NOT NULL DEFAULT '/bin/bash',
+		script_content TEXT NOT NULL DEFAULT '',
+		env_variables TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`
+
+	_, err = db.Exec(jobsTable)
+	if err != nil {
+		return fmt.Errorf("failed to create jobs table: %w", err)
+	}
+
+	jobTriggersTable := `
+	CREATE TABLE IF NOT EXISTS job_triggers (
+		id TEXT PRIMARY KEY,
+		source_job_id TEXT NOT NULL,
+		target_job_id TEXT NOT NULL,
+		trigger_on TEXT NOT NULL,
+		FOREIGN KEY (source_job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+		FOREIGN KEY (target_job_id) REFERENCES jobs(id) ON DELETE CASCADE
+	);`
+
+	_, err = db.Exec(jobTriggersTable)
+	if err != nil {
+		return fmt.Errorf("failed to create job_triggers table: %w", err)
+	}
+
+	jobRunsTable := `
+	CREATE TABLE IF NOT EXISTS job_runs (
+		id TEXT PRIMARY KEY,
+		job_id TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		triggered_by TEXT,
+		session_id TEXT,
+		duration_ms INTEGER NOT NULL DEFAULT 0,
+		tokens_used INTEGER NOT NULL DEFAULT 0,
+		result TEXT NOT NULL DEFAULT '',
+		error_message TEXT NOT NULL DEFAULT '',
+		started_at TEXT NOT NULL,
+		finished_at TEXT,
+		FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+		FOREIGN KEY (session_id) REFERENCES sessions(id)
+	);`
+
+	_, err = db.Exec(jobRunsTable)
+	if err != nil {
+		return fmt.Errorf("failed to create job_runs table: %w", err)
+	}
+
+	// Idempotent ALTER TABLE statements for schema evolution.
 	alterStatements := []string{
+		`ALTER TABLE jobs ADD COLUMN last_run_at TEXT`,
 		`ALTER TABLE sessions ADD COLUMN repo_id TEXT REFERENCES repos(id)`,
 		`ALTER TABLE sessions ADD COLUMN task_id TEXT REFERENCES tasks(id)`,
 		`ALTER TABLE sessions ADD COLUMN skip_permissions INTEGER NOT NULL DEFAULT 0`,

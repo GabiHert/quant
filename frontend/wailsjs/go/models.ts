@@ -124,6 +124,58 @@ export namespace dto {
 		    return a;
 		}
 	}
+	export class CreateJobRequest {
+	    name: string;
+	    description: string;
+	    type: string;
+	    workingDirectory: string;
+	    scheduleEnabled: boolean;
+	    scheduleType: string;
+	    cronExpression: string;
+	    scheduleInterval: number;
+	    timeoutSeconds: number;
+	    prompt: string;
+	    allowBypass: boolean;
+	    autonomousMode: boolean;
+	    maxRetries: number;
+	    model: string;
+	    overrideRepoCommand: string;
+	    claudeCommand: string;
+	    interpreter: string;
+	    scriptContent: string;
+	    envVariables: Record<string, string>;
+	    onSuccess: string[];
+	    onFailure: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateJobRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.type = source["type"];
+	        this.workingDirectory = source["workingDirectory"];
+	        this.scheduleEnabled = source["scheduleEnabled"];
+	        this.scheduleType = source["scheduleType"];
+	        this.cronExpression = source["cronExpression"];
+	        this.scheduleInterval = source["scheduleInterval"];
+	        this.timeoutSeconds = source["timeoutSeconds"];
+	        this.prompt = source["prompt"];
+	        this.allowBypass = source["allowBypass"];
+	        this.autonomousMode = source["autonomousMode"];
+	        this.maxRetries = source["maxRetries"];
+	        this.model = source["model"];
+	        this.overrideRepoCommand = source["overrideRepoCommand"];
+	        this.claudeCommand = source["claudeCommand"];
+	        this.interpreter = source["interpreter"];
+	        this.scriptContent = source["scriptContent"];
+	        this.envVariables = source["envVariables"];
+	        this.onSuccess = source["onSuccess"];
+	        this.onFailure = source["onFailure"];
+	    }
+	}
 	export class CreateRepoRequest {
 	    name: string;
 	    path: string;
@@ -204,6 +256,130 @@ export namespace dto {
 	        this.path = source["path"];
 	        this.status = source["status"];
 	        this.oldPath = source["oldPath"];
+	    }
+	}
+	export class TriggerRef {
+	    jobId: string;
+	    triggerOn: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TriggerRef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.jobId = source["jobId"];
+	        this.triggerOn = source["triggerOn"];
+	    }
+	}
+	export class JobResponse {
+	    id: string;
+	    name: string;
+	    description: string;
+	    type: string;
+	    workingDirectory: string;
+	    scheduleEnabled: boolean;
+	    scheduleType: string;
+	    cronExpression: string;
+	    scheduleInterval: number;
+	    timeoutSeconds: number;
+	    prompt: string;
+	    allowBypass: boolean;
+	    autonomousMode: boolean;
+	    maxRetries: number;
+	    model: string;
+	    overrideRepoCommand: string;
+	    claudeCommand: string;
+	    interpreter: string;
+	    scriptContent: string;
+	    envVariables: Record<string, string>;
+	    createdAt: string;
+	    updatedAt: string;
+	    onSuccess: string[];
+	    onFailure: string[];
+	    triggeredBy: TriggerRef[];
+	
+	    static createFrom(source: any = {}) {
+	        return new JobResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.type = source["type"];
+	        this.workingDirectory = source["workingDirectory"];
+	        this.scheduleEnabled = source["scheduleEnabled"];
+	        this.scheduleType = source["scheduleType"];
+	        this.cronExpression = source["cronExpression"];
+	        this.scheduleInterval = source["scheduleInterval"];
+	        this.timeoutSeconds = source["timeoutSeconds"];
+	        this.prompt = source["prompt"];
+	        this.allowBypass = source["allowBypass"];
+	        this.autonomousMode = source["autonomousMode"];
+	        this.maxRetries = source["maxRetries"];
+	        this.model = source["model"];
+	        this.overrideRepoCommand = source["overrideRepoCommand"];
+	        this.claudeCommand = source["claudeCommand"];
+	        this.interpreter = source["interpreter"];
+	        this.scriptContent = source["scriptContent"];
+	        this.envVariables = source["envVariables"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.onSuccess = source["onSuccess"];
+	        this.onFailure = source["onFailure"];
+	        this.triggeredBy = this.convertValues(source["triggeredBy"], TriggerRef);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class JobRunResponse {
+	    id: string;
+	    jobId: string;
+	    status: string;
+	    triggeredBy: string;
+	    sessionId: string;
+	    durationMs: number;
+	    tokensUsed: number;
+	    result: string;
+	    errorMessage: string;
+	    startedAt: string;
+	    finishedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new JobRunResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.jobId = source["jobId"];
+	        this.status = source["status"];
+	        this.triggeredBy = source["triggeredBy"];
+	        this.sessionId = source["sessionId"];
+	        this.durationMs = source["durationMs"];
+	        this.tokensUsed = source["tokensUsed"];
+	        this.result = source["result"];
+	        this.errorMessage = source["errorMessage"];
+	        this.startedAt = source["startedAt"];
+	        this.finishedAt = source["finishedAt"];
 	    }
 	}
 	export class RepoResponse {
@@ -381,6 +557,61 @@ export namespace dto {
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	        this.archivedAt = source["archivedAt"];
+	    }
+	}
+	
+	export class UpdateJobRequest {
+	    id: string;
+	    name: string;
+	    description: string;
+	    type: string;
+	    workingDirectory: string;
+	    scheduleEnabled: boolean;
+	    scheduleType: string;
+	    cronExpression: string;
+	    scheduleInterval: number;
+	    timeoutSeconds: number;
+	    prompt: string;
+	    allowBypass: boolean;
+	    autonomousMode: boolean;
+	    maxRetries: number;
+	    model: string;
+	    overrideRepoCommand: string;
+	    claudeCommand: string;
+	    interpreter: string;
+	    scriptContent: string;
+	    envVariables: Record<string, string>;
+	    onSuccess: string[];
+	    onFailure: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateJobRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.type = source["type"];
+	        this.workingDirectory = source["workingDirectory"];
+	        this.scheduleEnabled = source["scheduleEnabled"];
+	        this.scheduleType = source["scheduleType"];
+	        this.cronExpression = source["cronExpression"];
+	        this.scheduleInterval = source["scheduleInterval"];
+	        this.timeoutSeconds = source["timeoutSeconds"];
+	        this.prompt = source["prompt"];
+	        this.allowBypass = source["allowBypass"];
+	        this.autonomousMode = source["autonomousMode"];
+	        this.maxRetries = source["maxRetries"];
+	        this.model = source["model"];
+	        this.overrideRepoCommand = source["overrideRepoCommand"];
+	        this.claudeCommand = source["claudeCommand"];
+	        this.interpreter = source["interpreter"];
+	        this.scriptContent = source["scriptContent"];
+	        this.envVariables = source["envVariables"];
+	        this.onSuccess = source["onSuccess"];
+	        this.onFailure = source["onFailure"];
 	    }
 	}
 

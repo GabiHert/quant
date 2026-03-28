@@ -20,6 +20,10 @@ import (
 type Injector struct {
 	db *sql.DB
 
+	jobPersistence     intAdapter.JobPersistence
+	jobManager         appAdapter.JobManager
+	jobController      intAdapter.JobController
+	jobScheduler       appAdapter.JobScheduler
 	repoPersistence    intAdapter.RepoPersistence
 	taskPersistence    intAdapter.TaskPersistence
 	actionPersistence  intAdapter.ActionPersistence
@@ -239,4 +243,51 @@ func (i *Injector) ConfigController() intAdapter.ConfigController {
 		i.configController = controller.NewConfigController(i.ConfigManager())
 	}
 	return i.configController
+}
+
+// JobPersistence returns the singleton JobPersistence instance.
+func (i *Injector) JobPersistence() intAdapter.JobPersistence {
+	if i.jobPersistence == nil {
+		i.jobPersistence = persistence.NewJobPersistence(i.db)
+	}
+	return i.jobPersistence
+}
+
+// JobManager returns the singleton JobManager service instance.
+func (i *Injector) JobManager() appAdapter.JobManager {
+	if i.jobManager == nil {
+		jp := i.JobPersistence()
+		i.jobManager = service.NewJobManagerService(
+			jp, // FindJob
+			jp, // SaveJob
+			jp, // UpdateJob
+			jp, // DeleteJob
+			jp, // FindJobTrigger
+			jp, // SaveJobTrigger
+			jp, // FindJobRun
+			jp, // SaveJobRun
+		)
+	}
+	return i.jobManager
+}
+
+// JobScheduler returns the singleton JobScheduler instance.
+func (i *Injector) JobScheduler() appAdapter.JobScheduler {
+	if i.jobScheduler == nil {
+		jp := i.JobPersistence()
+		i.jobScheduler = service.NewJobScheduler(
+			jp,             // FindJob (for FindScheduledJobs)
+			i.JobManager(), // JobManager (for RunJob)
+			jp,             // UpdateJob (for disabling one-time schedules)
+		)
+	}
+	return i.jobScheduler
+}
+
+// JobController returns the singleton JobController instance.
+func (i *Injector) JobController() intAdapter.JobController {
+	if i.jobController == nil {
+		i.jobController = controller.NewJobController(i.JobManager())
+	}
+	return i.jobController
 }

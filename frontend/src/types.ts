@@ -80,6 +80,87 @@ export interface CreateSessionRequest {
   directoryOverride?: string;
 }
 
+// --- Jobs ---
+
+export type JobType = "claude" | "bash";
+export type JobRunStatus = "pending" | "running" | "success" | "failed" | "cancelled" | "timed_out";
+export type ScheduleType = "recurring" | "one_time";
+
+export interface Job {
+  id: string;
+  name: string;
+  description: string;
+  type: JobType;
+  workingDirectory: string;
+  scheduleEnabled: boolean;
+  scheduleType: ScheduleType;
+  cronExpression: string;
+  scheduleInterval: number;
+  timeoutSeconds: number;
+  prompt: string;
+  allowBypass: boolean;
+  autonomousMode: boolean;
+  maxRetries: number;
+  model: string;
+  overrideRepoCommand: string;
+  claudeCommand: string;
+  interpreter: string;
+  scriptContent: string;
+  envVariables: Record<string, string>;
+  onSuccess: string[];
+  onFailure: string[];
+  triggeredBy: TriggerRef[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TriggerRef {
+  jobId: string;
+  triggerOn: "success" | "failure";
+}
+
+export interface CreateJobRequest {
+  name: string;
+  description: string;
+  type: JobType;
+  workingDirectory: string;
+  scheduleEnabled: boolean;
+  scheduleType: ScheduleType;
+  cronExpression: string;
+  scheduleInterval: number;
+  timeoutSeconds: number;
+  prompt: string;
+  allowBypass: boolean;
+  autonomousMode: boolean;
+  maxRetries: number;
+  model: string;
+  overrideRepoCommand: string;
+  claudeCommand: string;
+  interpreter: string;
+  scriptContent: string;
+  envVariables: Record<string, string>;
+  onSuccess: string[];
+  onFailure: string[];
+}
+
+export interface UpdateJobRequest extends CreateJobRequest {
+  id: string;
+}
+
+export interface JobRun {
+  id: string;
+  jobId: string;
+  status: JobRunStatus;
+  triggeredBy: string;
+  sessionId: string;
+  durationMs: number;
+  tokensUsed: number;
+  result: string;
+  errorMessage: string;
+  startedAt: string;
+  finishedAt: string;
+}
+
 export interface DiffFile {
   path: string;
   status: string; // "M" | "A" | "D" | "R" | "?"

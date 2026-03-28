@@ -5,9 +5,13 @@ import type {
   Action,
   Config,
   DiffFile,
+  Job,
+  JobRun,
   CreateRepoRequest,
   CreateTaskRequest,
   CreateSessionRequest,
+  CreateJobRequest,
+  UpdateJobRequest,
 } from "./types";
 
 // These functions map to Go controller methods bound via Wails.
@@ -239,4 +243,48 @@ export function browseConfigDirectory(): Promise<string> {
 
 export function sendNotification(title: string, message: string): Promise<void> {
   return callGo(PKG, CONFIG_CTRL, "SendNotification", title, message);
+}
+
+// --- Jobs ---
+
+const JOB_CTRL = "jobController";
+
+export function createJob(req: CreateJobRequest): Promise<Job> {
+  return callGo(PKG, JOB_CTRL, "CreateJob", req);
+}
+
+export function updateJob(req: UpdateJobRequest): Promise<Job> {
+  return callGo(PKG, JOB_CTRL, "UpdateJob", req);
+}
+
+export function deleteJob(id: string): Promise<void> {
+  return callGo(PKG, JOB_CTRL, "DeleteJob", id);
+}
+
+export function getJob(id: string): Promise<Job> {
+  return callGo(PKG, JOB_CTRL, "GetJob", id);
+}
+
+export function listJobs(): Promise<Job[]> {
+  return callGo(PKG, JOB_CTRL, "ListJobs");
+}
+
+export function runJob(id: string): Promise<JobRun> {
+  return callGo(PKG, JOB_CTRL, "RunJob", id);
+}
+
+export function cancelRun(runId: string): Promise<void> {
+  return callGo(PKG, JOB_CTRL, "CancelRun", runId);
+}
+
+export function getRun(runId: string): Promise<JobRun> {
+  return callGo(PKG, JOB_CTRL, "GetRun", runId);
+}
+
+export function listRunsByJob(jobId: string): Promise<JobRun[]> {
+  return callGo(PKG, JOB_CTRL, "ListRunsByJob", jobId);
+}
+
+export function getRunOutput(runId: string): Promise<string> {
+  return callGo(PKG, JOB_CTRL, "GetRunOutput", runId);
 }

@@ -5,9 +5,12 @@ import type {
   Session,
   Action,
   Shortcut,
+  Job,
   CreateRepoRequest,
   CreateTaskRequest,
   CreateSessionRequest,
+  CreateJobRequest,
+  UpdateJobRequest,
 } from "./types";
 import * as api from "./api";
 import { Sidebar } from "./components/Sidebar";
@@ -26,6 +29,8 @@ import { DiffView } from "./components/DiffView";
 import { GitCommitModal } from "./components/GitCommitModal";
 import { GitPullModal } from "./components/GitPullModal";
 import { GitPushModal } from "./components/GitPushModal";
+import { JobsView } from "./components/JobsView";
+import { CreateJobModal } from "./components/CreateJobModal";
 
 type ModalState =
   | { type: "none" }
@@ -38,9 +43,11 @@ type ModalState =
   | { type: "renameTask"; taskId: string; currentTag: string; currentName: string }
   | { type: "gitCommit"; sessionId: string; sessionName: string }
   | { type: "gitPull"; sessionId: string; currentBranch: string }
-  | { type: "gitPush"; sessionId: string; currentBranch: string };
+  | { type: "gitPush"; sessionId: string; currentBranch: string }
+  | { type: "createJob" }
+  | { type: "editJob"; job: Job };
 
-type View = "dashboard" | "settings" | "diff";
+type View = "dashboard" | "settings" | "diff" | "jobs";
 
 function App() {
   const [view, setView] = useState<View>("dashboard");
@@ -65,6 +72,7 @@ function App() {
   // Track which sessions have the terminal pane open: parentSessionId -> boolean
   const [terminalPaneOpenMap, setTerminalPaneOpenMap] = useState<Record<string, boolean>>({});
 
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [diffSession, setDiffSession] = useState<{ id: string; name: string } | null>(null);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [commitMessagePrefix, setCommitMessagePrefix] = useState("");
@@ -171,9 +179,19 @@ function App() {
     }
   }, []);
 
+  const fetchJobs = useCallback(async () => {
+    try {
+      const list = await api.listJobs();
+      setJobs(list ?? []);
+    } catch (err) {
+      console.error("failed to list jobs:", err);
+    }
+  }, []);
+
   // initial load
   const loadAll = useCallback(async () => {
     fetchShortcuts();
+    fetchJobs();
     const repoList = await fetchRepos();
     for (const repo of repoList) {
       const tasks = await fetchTasksForRepo(repo.id);
@@ -182,7 +200,7 @@ function App() {
         await fetchSessionsForTask(task.id);
       }
     }
-  }, [fetchShortcuts, fetchRepos, fetchTasksForRepo, fetchSessionsForRepo, fetchSessionsForTask]);
+  }, [fetchShortcuts, fetchJobs, fetchRepos, fetchTasksForRepo, fetchSessionsForRepo, fetchSessionsForTask]);
 
   useEffect(() => {
     loadAll();
@@ -782,8 +800,127 @@ function App() {
     ? findSession(modal.sessionId, sessionsByRepo, sessionsByTask)?.taskId ?? ""
     : "";
 
+  const currentView: View = view;
+
+  const renderIconStrip = () => (
+    <div
+      style={{
+        width: 40,
+        backgroundColor: "#0A0A0A",
+        borderLeft: "1px solid #2a2a2a",
+        display: "flex",
+        flexDirection: "column",
+        padding: "8px 0",
+        fontFamily: "'JetBrains Mono', monospace",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <button
+          onClick={() => setView("settings")}
+          style={{
+            width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "none", border: "none", cursor: "pointer",
+            color: currentView === "settings" ? "#FAFAFA" : "#6B7280",
+            borderRight: currentView === "settings" ? "2px solid #10B981" : "2px solid transparent",
+          }}
+          onMouseEnter={(e) => { if (currentView !== "settings") e.currentTarget.style.color = "#FAFAFA"; }}
+          onMouseLeave={(e) => { if (currentView !== "settings") e.currentTarget.style.color = "#6B7280"; }}
+          title="settings"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+        <button
+          onClick={() => setView("dashboard")}
+          style={{
+            width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "none", border: "none", cursor: "pointer",
+            color: currentView === "dashboard" ? "#FAFAFA" : "#6B7280",
+            borderRight: currentView === "dashboard" ? "2px solid #10B981" : "2px solid transparent",
+          }}
+          onMouseEnter={(e) => { if (currentView !== "dashboard") e.currentTarget.style.color = "#FAFAFA"; }}
+          onMouseLeave={(e) => { if (currentView !== "dashboard") e.currentTarget.style.color = "#6B7280"; }}
+          title="sessions"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+        </button>
+        <button
+          onClick={() => { fetchJobs(); setView("jobs"); }}
+          style={{
+            width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "none", border: "none", cursor: "pointer",
+            color: currentView === "jobs" ? "#FAFAFA" : "#6B7280",
+            borderRight: currentView === "jobs" ? "2px solid #10B981" : "2px solid transparent",
+          }}
+          onMouseEnter={(e) => { if (currentView !== "jobs") e.currentTarget.style.color = "#FAFAFA"; }}
+          onMouseLeave={(e) => { if (currentView !== "jobs") e.currentTarget.style.color = "#6B7280"; }}
+          title="jobs"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderModals = () => (
+    <>
+      {modal.type === "createJob" && (
+        <CreateJobModal
+          jobs={jobs}
+          onSubmit={async (req) => {
+            try {
+              await api.createJob(req as CreateJobRequest);
+              setModal({ type: "none" });
+              fetchJobs();
+            } catch (err) {
+              console.error("failed to create job:", err);
+            }
+          }}
+          onCancel={() => setModal({ type: "none" })}
+        />
+      )}
+      {modal.type === "editJob" && (
+        <CreateJobModal
+          jobs={jobs}
+          editJob={modal.job}
+          onSubmit={async (req) => {
+            try {
+              await api.updateJob(req as UpdateJobRequest);
+              setModal({ type: "none" });
+              fetchJobs();
+            } catch (err) {
+              console.error("failed to update job:", err);
+            }
+          }}
+          onCancel={() => setModal({ type: "none" })}
+        />
+      )}
+    </>
+  );
+
   if (view === "settings") {
     return <Settings repos={repos} onBack={() => { fetchShortcuts(); setView("dashboard"); }} />;
+  }
+
+  if (view === "jobs") {
+    return (
+      <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A" }}>
+        <JobsView
+          jobs={jobs}
+          onCreateJob={() => setModal({ type: "createJob" })}
+          onEditJob={(job) => setModal({ type: "editJob", job })}
+          onRefreshJobs={fetchJobs}
+        />
+        {renderIconStrip()}
+        {renderModals()}
+      </div>
+    );
   }
 
   if (view === "diff" && diffSession) {
@@ -831,6 +968,8 @@ function App() {
         onDropSession={(sessionId, targetTaskId) => handleMoveSessionSelect(sessionId, targetTaskId)}
         onError={(msg) => setError(msg)}
         onOpenSettings={() => setView("settings")}
+        onOpenJobs={() => { fetchJobs(); setView("jobs"); }}
+        currentView={view}
         shortcuts={shortcuts}
         onGitCommit={openGitCommitModal}
         onGitPull={openGitPullModal}
@@ -891,6 +1030,8 @@ function App() {
           <EmptyState />
         )}
       </main>
+
+      {renderIconStrip()}
 
       {modal.type === "openRepo" && (
         <OpenRepoModal
@@ -981,6 +1122,8 @@ function App() {
           onCancel={() => setModal({ type: "none" })}
         />
       )}
+
+      {renderModals()}
 
       {/* Toast notifications */}
       {toasts.length > 0 && (
