@@ -20,78 +20,123 @@ import (
 	"quant/internal/integration/persistence"
 )
 
-// injectQuantMCP adds the Quant MCP server to ~/.claude/settings.json so Claude sessions
-// inside Quant automatically have access to job management tools.
+// injectQuantMCP adds the Quant MCP server to ~/.mcp.json so Claude sessions
+// automatically have access to job management tools.
 func injectQuantMCP() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return
 	}
-	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+	mcpPath := filepath.Join(homeDir, ".mcp.json")
 
-	// Read existing settings
-	data, err := os.ReadFile(settingsPath)
+	// Read existing config
+	data, err := os.ReadFile(mcpPath)
 	if err != nil {
-		// No settings file — create one with just the MCP config
 		data = []byte("{}")
 	}
 
-	var settings map[string]interface{}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
 		return
 	}
 
-	// Add or update mcpServers.quant
-	mcpServers, ok := settings["mcpServers"].(map[string]interface{})
+	// Add quant to mcpServers
+	mcpServers, ok := config["mcpServers"].(map[string]interface{})
 	if !ok {
 		mcpServers = make(map[string]interface{})
 	}
 	mcpServers["quant"] = map[string]interface{}{
-		"url": "http://localhost:52945/mcp",
+		"type": "http",
+		"url":  "http://localhost:52945/mcp",
 	}
-	settings["mcpServers"] = mcpServers
+	config["mcpServers"] = mcpServers
 
-	// Write back
-	out, err := json.MarshalIndent(settings, "", "  ")
+	out, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(settingsPath, out, 0644)
+	_ = os.WriteFile(mcpPath, out, 0644)
+
+	// Also enable in ~/.claude/settings.local.json
+	localSettingsPath := filepath.Join(homeDir, ".claude", "settings.local.json")
+	localData, err := os.ReadFile(localSettingsPath)
+	if err != nil {
+		localData = []byte("{}")
+	}
+	var localSettings map[string]interface{}
+	if err := json.Unmarshal(localData, &localSettings); err != nil {
+		return
+	}
+	enabled, _ := localSettings["enabledMcpjsonServers"].([]interface{})
+	found := false
+	for _, v := range enabled {
+		if v == "quant" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		enabled = append(enabled, "quant")
+		localSettings["enabledMcpjsonServers"] = enabled
+		localOut, err := json.MarshalIndent(localSettings, "", "  ")
+		if err != nil {
+			return
+		}
+		_ = os.WriteFile(localSettingsPath, localOut, 0644)
+	}
 }
 
-// removeQuantMCP removes the Quant MCP server from ~/.claude/settings.json on shutdown.
+// removeQuantMCP removes the Quant MCP server from ~/.mcp.json on shutdown.
 func removeQuantMCP() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return
 	}
-	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+	mcpPath := filepath.Join(homeDir, ".mcp.json")
 
-	data, err := os.ReadFile(settingsPath)
+	data, err := os.ReadFile(mcpPath)
 	if err != nil {
 		return
 	}
 
-	var settings map[string]interface{}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
 		return
 	}
 
-	mcpServers, ok := settings["mcpServers"].(map[string]interface{})
+	mcpServers, ok := config["mcpServers"].(map[string]interface{})
 	if ok {
 		delete(mcpServers, "quant")
-		if len(mcpServers) == 0 {
-			delete(settings, "mcpServers")
-		} else {
-			settings["mcpServers"] = mcpServers
-		}
+		config["mcpServers"] = mcpServers
 	}
 
-	out, err := json.MarshalIndent(settings, "", "  ")
+	out, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(settingsPath, out, 0644)
+	_ = os.WriteFile(mcpPath, out, 0644)
+
+	// Also remove from enabledMcpjsonServers in settings.local.json
+	localSettingsPath := filepath.Join(homeDir, ".claude", "settings.local.json")
+	localData, localErr := os.ReadFile(localSettingsPath)
+	if localErr != nil {
+		return
+	}
+	var localSettings map[string]interface{}
+	if json.Unmarshal(localData, &localSettings) != nil {
+		return
+	}
+	if enabled, ok := localSettings["enabledMcpjsonServers"].([]interface{}); ok {
+		var filtered []interface{}
+		for _, v := range enabled {
+			if v != "quant" {
+				filtered = append(filtered, v)
+			}
+		}
+		localSettings["enabledMcpjsonServers"] = filtered
+		localOut, _ := json.MarshalIndent(localSettings, "", "  ")
+		_ = os.WriteFile(localSettingsPath, localOut, 0644)
+	}
 }
 
 // Run bootstraps and starts the Wails application with all dependencies wired.
