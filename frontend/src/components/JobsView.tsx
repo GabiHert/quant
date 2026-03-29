@@ -193,6 +193,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
   const [canvasModalJobId, setCanvasModalJobId] = useState<string | null>(null);
   const [canvasModalTab, setCanvasModalTab] = useState<JobTab>("settings");
   const [connectingMode, setConnectingMode] = useState<{ type: "success" | "failure"; sourceId?: string } | null>(null);
+  const [connectMousePos, setConnectMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
   const [selectedEdge, setSelectedEdge] = useState<{ sourceId: string; targetId: string; type: "success" | "failure" } | null>(null);
@@ -1407,6 +1408,17 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
         }}
         onWheel={handleWheel}
         onMouseDown={handleCanvasMouseDown}
+        onMouseMove={(e) => {
+          if (connectingMode?.sourceId) {
+            const rect = canvasRef.current?.getBoundingClientRect();
+            if (rect) {
+              setConnectMousePos({
+                x: (e.clientX - rect.left - canvasOffset.x) / zoom,
+                y: (e.clientY - rect.top - canvasOffset.y) / zoom,
+              });
+            }
+          }
+        }}
         onClick={(e) => {
           // Clear selections only when clicking the canvas background directly
           if (e.target === e.currentTarget) {
@@ -1428,6 +1440,35 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
         >
           <g transform={`translate(${canvasOffset.x}, ${canvasOffset.y}) scale(${zoom})`} style={{ pointerEvents: "auto" }}>
             {renderSvgConnections()}
+            {/* Preview connection line when drawing a trigger */}
+            {connectingMode?.sourceId && (() => {
+              const sourcePos = nodePositions[connectingMode.sourceId];
+              if (!sourcePos) return null;
+              const sx = sourcePos.x + NODE_W;
+              const sy = sourcePos.y + NODE_H / 2;
+              // Snap to hovered node's left edge, otherwise follow mouse
+              let tx = connectMousePos.x;
+              let ty = connectMousePos.y;
+              if (hoveredNodeId && hoveredNodeId !== connectingMode.sourceId) {
+                const targetPos = nodePositions[hoveredNodeId];
+                if (targetPos) {
+                  tx = targetPos.x;
+                  ty = targetPos.y + NODE_H / 2;
+                }
+              }
+              const color = connectingMode.type === "success" ? "#10B981" : "#EF4444";
+              return (
+                <path
+                  d={`M ${sx},${sy} C ${sx + 80},${sy} ${tx - 80},${ty} ${tx},${ty}`}
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeDasharray="6 5"
+                  fill="none"
+                  opacity={0.6}
+                  style={{ pointerEvents: "none" }}
+                />
+              );
+            })()}
           </g>
         </svg>
 
@@ -1508,6 +1549,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
                   // Open modal on click, but not if we dragged
                   if (!didDrag.current) {
                     setCanvasModalJobId(job.id);
+                    setSelectedJobId(job.id);
                     setCanvasModalTab("settings");
                   }
                 }}
