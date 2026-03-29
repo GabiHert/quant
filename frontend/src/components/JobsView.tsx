@@ -427,7 +427,13 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
 
   async function handleRunJobById(jobId: string) {
     try {
-      await api.runJob(jobId);
+      const run = await api.runJob(jobId);
+      // Set selectedJobId so the modal's history tab shows the new run
+      setSelectedJobId(jobId);
+      await fetchRuns(jobId);
+      setSelectedRunId(run.id);
+      setSelectedTab("history");
+      setSelectedRunTab("session");
       onRefreshJobs();
     } catch (err) {
       console.error("failed to run job:", err);

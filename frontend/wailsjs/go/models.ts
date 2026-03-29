@@ -143,6 +143,7 @@ export namespace dto {
 	    claudeCommand: string;
 	    successPrompt: string;
 	    failurePrompt: string;
+	    metadataPrompt: string;
 	    interpreter: string;
 	    scriptContent: string;
 	    envVariables: Record<string, string>;
@@ -173,6 +174,7 @@ export namespace dto {
 	        this.claudeCommand = source["claudeCommand"];
 	        this.successPrompt = source["successPrompt"];
 	        this.failurePrompt = source["failurePrompt"];
+	        this.metadataPrompt = source["metadataPrompt"];
 	        this.interpreter = source["interpreter"];
 	        this.scriptContent = source["scriptContent"];
 	        this.envVariables = source["envVariables"];
