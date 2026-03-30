@@ -821,6 +821,14 @@ func (s *jobManagerService) executeBashJob(job *entity.Job, run *entity.JobRun) 
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
+	// Inject trigger context as env var so bash scripts can read upstream metadata
+	s.mu.Lock()
+	if ctx, ok := s.triggerCtx[run.ID]; ok {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("QUANT_TRIGGER_CONTEXT=%s", ctx))
+		delete(s.triggerCtx, run.ID)
+	}
+	s.mu.Unlock()
+
 	// Stream output to log file in real-time
 	logPath := runLogPath(run.ID)
 	_ = os.MkdirAll(filepath.Dir(logPath), 0755)
