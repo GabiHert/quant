@@ -12,6 +12,7 @@ type JobRun struct {
 	Status       string // pending, running, success, failed, cancelled, timed_out
 	TriggeredBy  string // run ID that triggered this run (empty if manual/scheduled)
 	SessionID    string // linked Claude session ID (for claude-type jobs)
+	ModelUsed    string // actual model that ran (from stream-json result event)
 	DurationMs   int64
 	TokensUsed   int
 	Result       string

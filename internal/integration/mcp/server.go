@@ -674,6 +674,7 @@ func runToMap(run *entity.JobRun) map[string]any {
 		"status":       run.Status,
 		"triggeredBy":  run.TriggeredBy,
 		"sessionId":    run.SessionID,
+		"modelUsed":    run.ModelUsed,
 		"durationMs":   run.DurationMs,
 		"tokensUsed":   run.TokensUsed,
 		"result":       run.Result,

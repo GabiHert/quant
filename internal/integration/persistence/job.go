@@ -28,7 +28,7 @@ const jobColumns = `id, name, description, type, working_directory, schedule_ena
 
 const jobTriggerColumns = `id, source_job_id, target_job_id, trigger_on`
 
-const jobRunColumns = `id, job_id, status, triggered_by, session_id, duration_ms, tokens_used, result,
+const jobRunColumns = `id, job_id, status, triggered_by, session_id, model_used, duration_ms, tokens_used, result,
 		error_message, started_at, finished_at`
 
 func scanJobRow(scanner interface{ Scan(...any) error }) (pdto.JobRow, error) {
@@ -58,7 +58,7 @@ func scanJobRunRow(scanner interface{ Scan(...any) error }) (pdto.JobRunRow, err
 	var row pdto.JobRunRow
 	err := scanner.Scan(
 		&row.ID, &row.JobID, &row.Status, &row.TriggeredBy, &row.SessionID,
-		&row.DurationMs, &row.TokensUsed, &row.Result,
+		&row.ModelUsed, &row.DurationMs, &row.TokensUsed, &row.Result,
 		&row.ErrorMessage, &row.StartedAt, &row.FinishedAt,
 	)
 	return row, err
@@ -365,13 +365,13 @@ func (p *jobPersistence) FindJobRunsByJobID(jobID string) ([]entity.JobRun, erro
 func (p *jobPersistence) SaveJobRun(run entity.JobRun) error {
 	row := pdto.JobRunRowFromEntity(run)
 
-	query := `INSERT INTO job_runs (id, job_id, status, triggered_by, session_id, duration_ms, tokens_used,
+	query := `INSERT INTO job_runs (id, job_id, status, triggered_by, session_id, model_used, duration_ms, tokens_used,
 		result, error_message, started_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := p.db.Exec(query,
 		row.ID, row.JobID, row.Status, row.TriggeredBy, row.SessionID,
-		row.DurationMs, row.TokensUsed, row.Result,
+		row.ModelUsed, row.DurationMs, row.TokensUsed, row.Result,
 		row.ErrorMessage, row.StartedAt, row.FinishedAt,
 	)
 	if err != nil {
@@ -386,12 +386,12 @@ func (p *jobPersistence) UpdateJobRun(run entity.JobRun) error {
 	row := pdto.JobRunRowFromEntity(run)
 
 	query := `UPDATE job_runs SET job_id = ?, status = ?, triggered_by = ?, session_id = ?,
-		duration_ms = ?, tokens_used = ?, result = ?, error_message = ?,
+		model_used = ?, duration_ms = ?, tokens_used = ?, result = ?, error_message = ?,
 		started_at = ?, finished_at = ? WHERE id = ?`
 
 	result, err := p.db.Exec(query,
 		row.JobID, row.Status, row.TriggeredBy, row.SessionID,
-		row.DurationMs, row.TokensUsed, row.Result, row.ErrorMessage,
+		row.ModelUsed, row.DurationMs, row.TokensUsed, row.Result, row.ErrorMessage,
 		row.StartedAt, row.FinishedAt, row.ID,
 	)
 	if err != nil {

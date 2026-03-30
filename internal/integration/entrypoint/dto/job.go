@@ -107,6 +107,7 @@ type JobRunResponse struct {
 	Status       string `json:"status"`
 	TriggeredBy  string `json:"triggeredBy"`
 	SessionID    string `json:"sessionId"`
+	ModelUsed    string `json:"modelUsed"`
 	DurationMs   int64  `json:"durationMs"`
 	TokensUsed   int    `json:"tokensUsed"`
 	Result       string `json:"result"`
@@ -199,6 +200,7 @@ func JobRunResponseFromEntity(run entity.JobRun) JobRunResponse {
 		Status:       run.Status,
 		TriggeredBy:  run.TriggeredBy,
 		SessionID:    run.SessionID,
+		ModelUsed:    run.ModelUsed,
 		DurationMs:   run.DurationMs,
 		TokensUsed:   run.TokensUsed,
 		Result:       run.Result,

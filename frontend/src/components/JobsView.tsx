@@ -994,6 +994,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
                     {renderKeyValue("started", selectedRun.startedAt ? new Date(selectedRun.startedAt).toLocaleString() : "---")}
                     {selectedRun.finishedAt && renderKeyValue("finished", new Date(selectedRun.finishedAt).toLocaleString())}
                     {renderKeyValue("duration", formatDuration(selectedRun.durationMs))}
+                    {selectedRun.modelUsed && renderKeyValue("model", selectedRun.modelUsed)}
                     {selectedRun.tokensUsed > 0 && renderKeyValue("tokens_used", selectedRun.tokensUsed.toLocaleString())}
                   </>)}
 

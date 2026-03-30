@@ -159,6 +159,7 @@ export interface JobRun {
   status: JobRunStatus;
   triggeredBy: string;
   sessionId: string;
+  modelUsed: string;
   durationMs: number;
   tokensUsed: number;
   result: string;

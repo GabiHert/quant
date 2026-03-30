@@ -265,7 +265,19 @@ func (s *jobManagerService) executeWithRetries(job *entity.Job, run *entity.JobR
 				return
 			}
 
-			// Execution error (timeout, crash) — retry
+			// Timeout — don't retry, fail immediately
+			if strings.Contains(execErr.Error(), "timed out") {
+				now := time.Now()
+				run.Status = jobrunstatus.Failed
+				run.ErrorMessage = execErr.Error()
+				run.Result = result
+				run.FinishedAt = &now
+				_ = s.saveJobRun.UpdateJobRun(*run)
+				s.fireTriggers(job.ID, run)
+				return
+			}
+
+			// Execution error (crash, non-zero exit) — retry
 			lastOutput = result
 			lastErr = execErr
 			if attempt < maxAttempts {
@@ -520,12 +532,26 @@ func (s *jobManagerService) executeClaudeJob(job *entity.Job, run *entity.JobRun
 				}
 
 			case "result":
-				// Extract token usage from the final result event
+				// Extract token usage and model from the final result event
 				usage, _ := event["usage"].(map[string]interface{})
 				if usage != nil {
 					inputTokens, _ := usage["input_tokens"].(float64)
 					outputTokens, _ := usage["output_tokens"].(float64)
 					run.TokensUsed = int(inputTokens + outputTokens)
+				}
+				// Log and store which model actually ran
+				if model, ok := event["model"].(string); ok && model != "" {
+					run.ModelUsed = model
+					if logFile != nil {
+						_, _ = logFile.WriteString(fmt.Sprintf("\n--- model: %s ---\n", model))
+						_ = logFile.Sync()
+					}
+					// Warn if model doesn't match what was requested
+					if job.Model != "" && job.Model != "cli default" && model != job.Model {
+						if logFile != nil {
+							_, _ = logFile.WriteString(fmt.Sprintf("WARNING: requested model %q but got %q\n", job.Model, model))
+						}
+					}
 				}
 				// Also get the result text if we missed it
 				if resultText.Len() == 0 {

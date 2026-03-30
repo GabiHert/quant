@@ -203,6 +203,7 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE jobs ADD COLUMN success_prompt TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE jobs ADD COLUMN failure_prompt TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE jobs ADD COLUMN metadata_prompt TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE job_runs ADD COLUMN model_used TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		// Ignore errors from ALTER TABLE since the column may already exist.

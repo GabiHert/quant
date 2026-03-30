@@ -15,6 +15,7 @@ type JobRunRow struct {
 	Status       string
 	TriggeredBy  sql.NullString
 	SessionID    sql.NullString
+	ModelUsed    string
 	DurationMs   int64
 	TokensUsed   int
 	Result       string
@@ -49,6 +50,7 @@ func (r JobRunRow) ToEntity() entity.JobRun {
 		Status:       r.Status,
 		TriggeredBy:  triggeredBy,
 		SessionID:    sessionID,
+		ModelUsed:    r.ModelUsed,
 		DurationMs:   r.DurationMs,
 		TokensUsed:   r.TokensUsed,
 		Result:       r.Result,
@@ -81,6 +83,7 @@ func JobRunRowFromEntity(run entity.JobRun) JobRunRow {
 		Status:       run.Status,
 		TriggeredBy:  triggeredBy,
 		SessionID:    sessionID,
+		ModelUsed:    run.ModelUsed,
 		DurationMs:   run.DurationMs,
 		TokensUsed:   run.TokensUsed,
 		Result:       run.Result,
