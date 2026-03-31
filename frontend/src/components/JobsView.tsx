@@ -112,11 +112,13 @@ function autoLayout(jobs: Job[]): NodePositions {
   const roots = jobs.filter((j) => !allTargets.has(j.id));
   if (roots.length === 0) roots.push(jobs[0]);
 
-  // BFS to assign depth
+  // BFS to assign depth (cycle-safe: only enqueue each node once)
   const depth = new Map<string, number>();
+  const visited = new Set<string>();
   const queue: string[] = [];
   for (const r of roots) {
     depth.set(r.id, 0);
+    visited.add(r.id);
     queue.push(r.id);
   }
   while (queue.length > 0) {
@@ -125,7 +127,8 @@ function autoLayout(jobs: Job[]): NodePositions {
     const targets = outgoing.get(id) ?? [];
     for (const t of targets) {
       if (!jobIds.has(t)) continue;
-      if (!depth.has(t) || depth.get(t)! < d + 1) {
+      if (!visited.has(t)) {
+        visited.add(t);
         depth.set(t, d + 1);
         queue.push(t);
       }
