@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Job, JobRun, UpdateJobRequest, Agent } from "../types";
 import * as api from "../api";
 
@@ -100,23 +100,55 @@ function autoLayout(jobs: Job[]): NodePositions {
 
   const jobIds = new Set(jobs.map((j) => j.id));
 
-  // Build bidirectional adjacency (ignore edges to non-existent jobs)
-  const outgoing = new Map<string, string[]>();
-  const incoming = new Map<string, string[]>();
+  // Build separate success/failure adjacency
+  const successOut = new Map<string, string[]>();
+  const allOut = new Map<string, string[]>();
+  const allIn = new Map<string, string[]>();
   for (const job of jobs) {
-    const targets = [...(job.onSuccess ?? []), ...(job.onFailure ?? [])].filter((t) => jobIds.has(t));
-    outgoing.set(job.id, targets);
-    if (!incoming.has(job.id)) incoming.set(job.id, []);
-    for (const t of targets) {
-      if (!incoming.has(t)) incoming.set(t, []);
-      incoming.get(t)!.push(job.id);
+    const succs = (job.onSuccess ?? []).filter((t) => jobIds.has(t));
+    const fails = (job.onFailure ?? []).filter((t) => jobIds.has(t));
+    successOut.set(job.id, succs);
+    allOut.set(job.id, [...succs, ...fails]);
+    if (!allIn.has(job.id)) allIn.set(job.id, []);
+    for (const t of [...succs, ...fails]) {
+      if (!allIn.has(t)) allIn.set(t, []);
+      allIn.get(t)!.push(job.id);
     }
   }
 
-  // Find connected components (undirected) so each pipeline is laid out independently
+  // Identify side-effect nodes: triggered by 3+ unique sources with no outgoing edges
+  const sideEffectIds = new Set<string>();
+  for (const job of jobs) {
+    const inc = allIn.get(job.id) ?? [];
+    const uniqueSources = new Set(inc).size;
+    const out = allOut.get(job.id) ?? [];
+    if (uniqueSources >= 3 && out.length === 0) {
+      sideEffectIds.add(job.id);
+    }
+  }
+
+  // Build layout adjacency (excluding side-effects as targets)
+  const layoutOut = new Map<string, string[]>();
+  const layoutSuccessOut = new Map<string, string[]>();
+  const layoutIn = new Map<string, string[]>();
+  for (const job of jobs) {
+    if (sideEffectIds.has(job.id)) continue;
+    const succs = (job.onSuccess ?? []).filter((t) => jobIds.has(t) && !sideEffectIds.has(t));
+    const fails = (job.onFailure ?? []).filter((t) => jobIds.has(t) && !sideEffectIds.has(t));
+    layoutSuccessOut.set(job.id, succs);
+    layoutOut.set(job.id, [...succs, ...fails]);
+    if (!layoutIn.has(job.id)) layoutIn.set(job.id, []);
+    for (const t of [...succs, ...fails]) {
+      if (!layoutIn.has(t)) layoutIn.set(t, []);
+      layoutIn.get(t)!.push(job.id);
+    }
+  }
+
+  // Find connected components (undirected, excluding side-effects)
+  const mainJobs = jobs.filter((j) => !sideEffectIds.has(j.id));
   const componentOf = new Map<string, number>();
   let componentCount = 0;
-  for (const job of jobs) {
+  for (const job of mainJobs) {
     if (componentOf.has(job.id)) continue;
     const cid = componentCount++;
     const stack = [job.id];
@@ -124,37 +156,51 @@ function autoLayout(jobs: Job[]): NodePositions {
       const id = stack.pop()!;
       if (componentOf.has(id)) continue;
       componentOf.set(id, cid);
-      for (const t of outgoing.get(id) ?? []) if (!componentOf.has(t)) stack.push(t);
-      for (const t of incoming.get(id) ?? []) if (!componentOf.has(t)) stack.push(t);
+      for (const t of layoutOut.get(id) ?? []) if (!componentOf.has(t)) stack.push(t);
+      for (const t of layoutIn.get(id) ?? []) if (!componentOf.has(t)) stack.push(t);
     }
   }
 
-  // Group jobs by component
   const components: Job[][] = Array.from({ length: componentCount }, () => []);
-  for (const job of jobs) {
+  for (const job of mainJobs) {
     components[componentOf.get(job.id)!].push(job);
   }
-
-  // Sort components: largest first (main pipelines at the top)
   components.sort((a, b) => b.length - a.length);
 
   const hSpacing = 300;
-  const vSpacing = 140;
-  const componentGap = 80;
+  const vSpacing = 120;
+  const componentGap = 100;
   const startX = 100;
   let currentY = 100;
+  const positionedSideEffects = new Set<string>();
 
   for (const component of components) {
     const compIds = new Set(component.map((j) => j.id));
 
-    // Find roots within this component (no incoming edges from within the component)
+    // Find roots (no incoming from within component)
     const roots = component.filter((j) => {
-      const inc = incoming.get(j.id) ?? [];
-      return inc.filter((i) => compIds.has(i)).length === 0;
+      const inc = (layoutIn.get(j.id) ?? []).filter((i) => compIds.has(i));
+      return inc.length === 0;
     });
     if (roots.length === 0) roots.push(component[0]);
 
-    // BFS to assign depth (cycle-safe)
+    // Phase 1: Success-only BFS → identifies the "spine" (happy path)
+    const spineIds = new Set<string>();
+    const spineQueue: string[] = [];
+    for (const r of roots) { spineIds.add(r.id); spineQueue.push(r.id); }
+    const spineVisited = new Set<string>(spineQueue);
+    while (spineQueue.length > 0) {
+      const id = spineQueue.shift()!;
+      for (const t of (layoutSuccessOut.get(id) ?? []).filter((t) => compIds.has(t))) {
+        if (!spineVisited.has(t)) {
+          spineVisited.add(t);
+          spineIds.add(t);
+          spineQueue.push(t);
+        }
+      }
+    }
+
+    // Phase 2: Full BFS (all edges) for depth assignment
     const depth = new Map<string, number>();
     const visited = new Set<string>();
     const queue: string[] = [];
@@ -166,8 +212,7 @@ function autoLayout(jobs: Job[]): NodePositions {
     while (queue.length > 0) {
       const id = queue.shift()!;
       const d = depth.get(id)!;
-      for (const t of outgoing.get(id) ?? []) {
-        if (!compIds.has(t)) continue;
+      for (const t of (layoutOut.get(id) ?? []).filter((t) => compIds.has(t))) {
         if (!visited.has(t)) {
           visited.add(t);
           depth.set(t, d + 1);
@@ -175,29 +220,87 @@ function autoLayout(jobs: Job[]): NodePositions {
         }
       }
     }
-    // Unreachable nodes within this component get depth 0
     for (const job of component) {
       if (!depth.has(job.id)) depth.set(job.id, 0);
     }
 
-    // Group by depth level
-    const levels = new Map<number, string[]>();
+    // Phase 3: Group by depth, separate spine (row 0) from branch (row 1+)
+    const levels = new Map<number, { spine: string[]; branch: string[] }>();
     for (const [id, d] of depth.entries()) {
-      if (!levels.has(d)) levels.set(d, []);
-      levels.get(d)!.push(id);
+      if (!levels.has(d)) levels.set(d, { spine: [], branch: [] });
+      const level = levels.get(d)!;
+      if (spineIds.has(id)) level.spine.push(id);
+      else level.branch.push(id);
     }
 
-    // Position nodes: left-to-right by depth, top-to-bottom within each level
+    // Position: spine nodes on top, branch nodes below with a gap
+    const sortedDepths = [...levels.keys()].sort((a, b) => a - b);
     let maxRows = 0;
-    for (const [d, ids] of levels.entries()) {
-      maxRows = Math.max(maxRows, ids.length);
-      for (let i = 0; i < ids.length; i++) {
-        positions[ids[i]] = { x: startX + d * hSpacing, y: currentY + i * vSpacing };
+    for (const d of sortedDepths) {
+      const { spine, branch } = levels.get(d)!;
+      let row = 0;
+      for (const id of spine) {
+        positions[id] = { x: startX + d * hSpacing, y: currentY + row * vSpacing };
+        row++;
       }
+      if (branch.length > 0 && spine.length > 0) {
+        row = Math.max(row, 1); // ensure gap between spine and branch
+      }
+      for (const id of branch) {
+        positions[id] = { x: startX + d * hSpacing, y: currentY + row * vSpacing };
+        row++;
+      }
+      maxRows = Math.max(maxRows, row);
     }
 
-    // Advance Y for the next component
-    currentY += maxRows * vSpacing + componentGap;
+    // Phase 4: Position side-effects belonging to THIS component right below it
+    const compSideEffects = jobs.filter((j) => {
+      if (!sideEffectIds.has(j.id) || positionedSideEffects.has(j.id)) return false;
+      const inc = allIn.get(j.id) ?? [];
+      return inc.some((srcId) => compIds.has(srcId));
+    });
+
+    // Check if this component has backward edges (loops) — these dip below nodes
+    let hasBackwardEdges = false;
+    for (const j of component) {
+      for (const t of [...(j.onSuccess ?? []), ...(j.onFailure ?? [])]) {
+        const tPos = positions[t];
+        const jPos = positions[j.id];
+        if (tPos && jPos && tPos.x <= jPos.x + NODE_W + 10) {
+          hasBackwardEdges = true;
+          break;
+        }
+      }
+      if (hasBackwardEdges) break;
+    }
+    // Extra space for backward edge curves (they dip ~100px below lowest node)
+    const backwardEdgeSpace = hasBackwardEdges ? 100 : 0;
+
+    if (compSideEffects.length > 0) {
+      const seY = currentY + maxRows * vSpacing + backwardEdgeSpace + 20;
+      const compPositions = component.map((j) => positions[j.id]).filter(Boolean);
+      const avgX = compPositions.length > 0
+        ? compPositions.reduce((s, p) => s + p.x, 0) / compPositions.length
+        : startX;
+      const totalWidth = compSideEffects.length * (NODE_W + 60) - 60;
+      const seStartX = Math.max(avgX - totalWidth / 2, startX);
+      for (let i = 0; i < compSideEffects.length; i++) {
+        positions[compSideEffects[i].id] = { x: seStartX + i * (NODE_W + 60), y: seY };
+        positionedSideEffects.add(compSideEffects[i].id);
+      }
+      currentY = seY + vSpacing;
+    } else {
+      currentY += maxRows * vSpacing + backwardEdgeSpace;
+    }
+
+    currentY += componentGap;
+  }
+
+  // Catch any unpositioned jobs
+  const positioned = new Set(Object.keys(positions));
+  const remaining = jobs.filter((j) => !positioned.has(j.id));
+  for (let i = 0; i < remaining.length; i++) {
+    positions[remaining[i].id] = { x: startX + i * (NODE_W + 60), y: currentY };
   }
 
   return positions;
@@ -270,6 +373,113 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
 
   // For canvas modal, select the job so settings/history tabs work
   const canvasModalJob = jobs.find((j) => j.id === canvasModalJobId) ?? null;
+
+  // Route highlighting: compute forward paths from running jobs
+  const routeState = useMemo(() => {
+    if (runningJobIds.size === 0) return null;
+
+    const routeNodes = new Set<string>();
+    const routeEdges = new Set<string>(); // "srcId->tgtId:type"
+    const jobMap = new Map(jobs.map((j) => [j.id, j]));
+
+    for (const runId of runningJobIds) {
+      routeNodes.add(runId);
+      const runJob = jobMap.get(runId);
+      if (!runJob) continue;
+
+      // BFS forward through success edges
+      const visited = new Set<string>([runId]);
+      const queue: string[] = [];
+      for (const t of (runJob.onSuccess ?? [])) {
+        if (jobMap.has(t) && !visited.has(t)) {
+          visited.add(t); queue.push(t);
+          routeNodes.add(t);
+          routeEdges.add(`${runId}->${t}:success`);
+        }
+      }
+      while (queue.length > 0) {
+        const nid = queue.shift()!;
+        const nJob = jobMap.get(nid);
+        if (!nJob) continue;
+        for (const t of (nJob.onSuccess ?? [])) {
+          if (jobMap.has(t)) {
+            routeEdges.add(`${nid}->${t}:success`);
+            routeNodes.add(t);
+            if (!visited.has(t)) { visited.add(t); queue.push(t); }
+          }
+        }
+      }
+
+      // Failure: first hop from running job + where the failure target loops back
+      for (const t of (runJob.onFailure ?? [])) {
+        if (!jobMap.has(t)) continue;
+        routeEdges.add(`${runId}->${t}:failure`);
+        routeNodes.add(t);
+        const fJob = jobMap.get(t);
+        if (fJob) {
+          for (const lt of (fJob.onSuccess ?? [])) {
+            if (jobMap.has(lt)) { routeEdges.add(`${t}->${lt}:success`); routeNodes.add(lt); }
+          }
+          for (const lt of (fJob.onFailure ?? [])) {
+            if (jobMap.has(lt)) { routeEdges.add(`${t}->${lt}:failure`); routeNodes.add(lt); }
+          }
+        }
+      }
+    }
+
+    return { routeNodes, routeEdges };
+  }, [jobs, runningJobIds]);
+
+  // Hover highlighting: find directly connected nodes
+  const hoverConnectedNodes = useMemo(() => {
+    if (!hoveredNodeId || connectingMode || canvasModalJobId) return null;
+    const connected = new Set<string>([hoveredNodeId]);
+    for (const job of jobs) {
+      const succs = job.onSuccess ?? [];
+      const fails = job.onFailure ?? [];
+      if (job.id === hoveredNodeId) {
+        succs.forEach((t) => connected.add(t));
+        fails.forEach((t) => connected.add(t));
+      } else {
+        if (succs.includes(hoveredNodeId) || fails.includes(hoveredNodeId)) {
+          connected.add(job.id);
+        }
+      }
+    }
+    return connected;
+  }, [hoveredNodeId, jobs, connectingMode, canvasModalJobId]);
+
+  // Precompute connected components for edge routing (so backward edges only scan their own pipeline)
+  const jobComponentMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const jobIds = new Set(jobs.map((j) => j.id));
+    const adj = new Map<string, string[]>();
+    for (const job of jobs) {
+      const targets = [...(job.onSuccess ?? []), ...(job.onFailure ?? [])].filter((t) => jobIds.has(t));
+      adj.set(job.id, targets);
+    }
+    const visited = new Set<string>();
+    for (const job of jobs) {
+      if (visited.has(job.id)) continue;
+      const component = new Set<string>();
+      const stack = [job.id];
+      while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        component.add(id);
+        for (const t of adj.get(id) ?? []) if (!visited.has(t)) stack.push(t);
+        // Also check reverse edges
+        for (const j of jobs) {
+          if ([...(j.onSuccess ?? []), ...(j.onFailure ?? [])].includes(id) && !visited.has(j.id)) {
+            stack.push(j.id);
+          }
+        }
+      }
+      for (const id of component) map.set(id, component);
+    }
+    return map;
+  }, [jobs]);
 
   // Initialize node positions on first render with jobs
   useEffect(() => {
@@ -1079,14 +1289,12 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
   }
 
   // Generate a smooth wavy path between two points — like a vibrating rope
-  function wavyPath(sx: number, sy: number, tx: number, ty: number, time: number, amplitude: number, frequency: number): string {
+  function wavyPath(sx: number, sy: number, tx: number, ty: number, cx1: number, cy1: number, cx2: number, cy2: number, time: number, amplitude: number, frequency: number): string {
     const steps = 40;
     const points: string[] = [];
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       // Base bezier curve position (cubic)
-      const cx1 = sx + 80, cy1 = sy;
-      const cx2 = tx - 80, cy2 = ty;
       const mt = 1 - t;
       const bx = mt*mt*mt*sx + 3*mt*mt*t*cx1 + 3*mt*t*t*cx2 + t*t*t*tx;
       const by = mt*mt*mt*sy + 3*mt*mt*t*cy1 + 3*mt*t*t*cy2 + t*t*t*ty;
@@ -1124,18 +1332,84 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
         const targetPos = nodePositions[targetId];
         if (!targetPos) return;
 
-        const sx = sourcePos.x + NODE_W;
-        const sy = sourcePos.y + NODE_H / 2;
-        const tx = targetPos.x;
-        const ty = targetPos.y + NODE_H / 2;
-        const midX = (sx + tx) / 2;
-        const midY = (sy + ty) / 2;
         const edgeColor = edgeType === "success" ? "#10B981" : "#EF4444";
         const k = keyIdx++;
         const isSelected = selectedEdge?.sourceId === job.id && selectedEdge?.targetId === targetId && selectedEdge?.type === edgeType;
         const isFlashing = flashingEdges.has(`${job.id}->${targetId}`);
         const isAnimated = isSelected || isFlashing;
-        const pathD = `M ${sx},${sy} C ${sx + 80},${sy} ${tx - 80},${ty} ${tx},${ty}`;
+
+        // Free port connection: find best exit/entry points on any side of the nodes
+        // Source center and target center
+        const sCx = sourcePos.x + NODE_W / 2;
+        const sCy = sourcePos.y + NODE_H / 2;
+        const tCx = targetPos.x + NODE_W / 2;
+        const tCy = targetPos.y + NODE_H / 2;
+        const dx = tCx - sCx;
+        const dy = tCy - sCy;
+        const pad = 2; // small gap so arrow doesn't overlap border
+
+        // Pick exit port on source node (closest side towards target center)
+        let sx: number, sy: number;
+        const sAspect = (NODE_W / 2) / (NODE_H / 2);
+        if (Math.abs(dx) > Math.abs(dy) * sAspect) {
+          // Horizontal dominant: exit left or right
+          sx = dx > 0 ? sourcePos.x + NODE_W + pad : sourcePos.x - pad;
+          sy = sCy + (dy / Math.abs(dx)) * (NODE_W / 2) * 0.5;
+          sy = Math.max(sourcePos.y + 4, Math.min(sourcePos.y + NODE_H - 4, sy));
+        } else {
+          // Vertical dominant: exit top or bottom
+          sy = dy > 0 ? sourcePos.y + NODE_H + pad : sourcePos.y - pad;
+          sx = sCx + (dx / Math.max(Math.abs(dy), 1)) * (NODE_H / 2) * 0.5;
+          sx = Math.max(sourcePos.x + 4, Math.min(sourcePos.x + NODE_W - 4, sx));
+        }
+
+        // Pick entry port on target node (closest side towards source center)
+        let tx: number, ty: number;
+        if (Math.abs(dx) > Math.abs(dy) * sAspect) {
+          tx = dx > 0 ? targetPos.x - pad : targetPos.x + NODE_W + pad;
+          ty = tCy - (dy / Math.abs(dx)) * (NODE_W / 2) * 0.5;
+          ty = Math.max(targetPos.y + 4, Math.min(targetPos.y + NODE_H - 4, ty));
+        } else {
+          ty = dy > 0 ? targetPos.y - pad : targetPos.y + NODE_H + pad;
+          tx = tCx - (dx / Math.max(Math.abs(dy), 1)) * (NODE_H / 2) * 0.5;
+          tx = Math.max(targetPos.x + 4, Math.min(targetPos.x + NODE_W - 4, tx));
+        }
+
+        // Compute control points based on exit/entry directions
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const cpLen = Math.min(Math.max(dist * 0.35, 40), 120);
+        let cx1: number, cy1: number, cx2: number, cy2: number;
+
+        // Source control point: extend in the direction of exit
+        const sDx = sx - sCx;
+        const sDy = sy - sCy;
+        const sLen = Math.sqrt(sDx * sDx + sDy * sDy) || 1;
+        cx1 = sx + (sDx / sLen) * cpLen;
+        cy1 = sy + (sDy / sLen) * cpLen;
+
+        // Target control point: extend in the direction of entry (away from target center)
+        const tDx = tx - tCx;
+        const tDy = ty - tCy;
+        const tLen = Math.sqrt(tDx * tDx + tDy * tDy) || 1;
+        cx2 = tx + (tDx / tLen) * cpLen;
+        cy2 = ty + (tDy / tLen) * cpLen;
+
+        const pathD = `M ${sx},${sy} C ${cx1},${cy1} ${cx2},${cy2} ${tx},${ty}`;
+        // Compute actual bezier midpoint for label positioning
+        const midX = 0.125 * sx + 0.375 * cx1 + 0.375 * cx2 + 0.125 * tx;
+        const midY = 0.125 * sy + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ty;
+
+        // Hover/route edge highlighting
+        const isHoverRelevant = hoveredNodeId === job.id || hoveredNodeId === targetId;
+        const routeEdgeKey = `${job.id}->${targetId}:${edgeType}`;
+        const isInRoute = routeState?.routeEdges.has(routeEdgeKey) ?? false;
+        let edgeOpacity = 1;
+        let defaultStroke = edgeColor;
+        if (hoverConnectedNodes && !isSelected && !isFlashing) {
+          if (!isHoverRelevant) { edgeOpacity = 0.06; defaultStroke = "#4B5563"; }
+        } else if (routeState && !isSelected && !isFlashing) {
+          if (!isInRoute) { edgeOpacity = 0.12; defaultStroke = "#4B5563"; }
+        }
 
         lines.push(
           <g key={`edge-${k}`} style={{ cursor: "pointer" }}>
@@ -1155,21 +1429,23 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             {/* Visible dashed line — wavy when selected, smooth transitions */}
             <path
               d={isSelected && waveAmplitude.current > 0.1
-                ? wavyPath(sx, sy, tx, ty, wavePhase, waveAmplitude.current, waveFreq.current)
+                ? wavyPath(sx, sy, tx, ty, cx1, cy1, cx2, cy2, wavePhase, waveAmplitude.current, waveFreq.current)
                 : pathD}
-              stroke={isFlashing ? edgeColor : isSelected ? (edgeDeleteHover ? "#EF4444" : "#FAFAFA") : "#4B5563"}
+              stroke={isFlashing ? edgeColor : isSelected ? (edgeDeleteHover ? "#EF4444" : "#FAFAFA") : defaultStroke}
               strokeWidth={2}
               strokeDasharray="6 5"
               fill="none"
-              style={isFlashing ? { animation: "edge-march 0.4s linear infinite" } : undefined}
+              markerEnd={isSelected ? (edgeDeleteHover ? "url(#arrow-delete)" : "url(#arrow-selected)") : edgeOpacity < 0.5 ? "url(#arrow-dim)" : `url(#arrow-${edgeType})`}
+              style={{ ...(isFlashing ? { animation: "edge-march 0.4s linear infinite" } : {}), opacity: isSelected || isFlashing ? 1 : edgeOpacity, transition: "opacity 0.2s" }}
             />
-            <circle cx={midX} cy={midY - 14} r={4} fill={isSelected && edgeDeleteHover ? "#EF4444" : edgeColor} />
+            <circle cx={midX} cy={midY - 14} r={4} fill={isSelected && edgeDeleteHover ? "#EF4444" : edgeColor} style={{ opacity: isSelected || isFlashing ? 1 : edgeOpacity, transition: "opacity 0.2s" }} />
             <text
               x={midX + 8}
               y={midY - 11}
-              fill={isSelected && edgeDeleteHover ? "#EF4444" : "#4B5563"}
+              fill={isSelected && edgeDeleteHover ? "#EF4444" : defaultStroke}
               fontSize={8}
               fontFamily={font}
+              style={{ opacity: isSelected || isFlashing ? 1 : edgeOpacity, transition: "opacity 0.2s" }}
             >
               {edgeType}
             </text>
@@ -1503,33 +1779,68 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             zIndex: 1,
           }}
         >
+          <defs>
+            <marker id="arrow-success" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#10B981"/></marker>
+            <marker id="arrow-failure" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#EF4444"/></marker>
+            <marker id="arrow-selected" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#FAFAFA"/></marker>
+            <marker id="arrow-delete" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#EF4444"/></marker>
+            <marker id="arrow-dim" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#4B5563"/></marker>
+          </defs>
           <g transform={`translate(${canvasOffset.x}, ${canvasOffset.y}) scale(${zoom})`} style={{ pointerEvents: "auto" }}>
             {renderSvgConnections()}
             {/* Preview connection line when drawing a trigger */}
             {connectingMode?.sourceId && (() => {
-              const sourcePos = nodePositions[connectingMode.sourceId];
-              if (!sourcePos) return null;
-              const sx = sourcePos.x + NODE_W;
-              const sy = sourcePos.y + NODE_H / 2;
-              // Snap to hovered node's left edge, otherwise follow mouse
+              const srcPos = nodePositions[connectingMode.sourceId];
+              if (!srcPos) return null;
+              // Compute free port towards target
+              let rawTx = connectMousePos.x;
+              let rawTy = connectMousePos.y;
+              if (hoveredNodeId && hoveredNodeId !== connectingMode.sourceId) {
+                const tgtPos = nodePositions[hoveredNodeId];
+                if (tgtPos) { rawTx = tgtPos.x + NODE_W / 2; rawTy = tgtPos.y + NODE_H / 2; }
+              }
+              const pDx = rawTx - (srcPos.x + NODE_W / 2);
+              const pDy = rawTy - (srcPos.y + NODE_H / 2);
+              const pAspect = (NODE_W / 2) / (NODE_H / 2);
+              let sx: number, sy: number;
+              if (Math.abs(pDx) > Math.abs(pDy) * pAspect) {
+                sx = pDx > 0 ? srcPos.x + NODE_W + 2 : srcPos.x - 2;
+                sy = srcPos.y + NODE_H / 2 + (pDy / Math.abs(pDx)) * (NODE_W / 2) * 0.5;
+                sy = Math.max(srcPos.y + 4, Math.min(srcPos.y + NODE_H - 4, sy));
+              } else {
+                sy = pDy > 0 ? srcPos.y + NODE_H + 2 : srcPos.y - 2;
+                sx = srcPos.x + NODE_W / 2 + (pDx / Math.max(Math.abs(pDy), 1)) * (NODE_H / 2) * 0.5;
+                sx = Math.max(srcPos.x + 4, Math.min(srcPos.x + NODE_W - 4, sx));
+              }
               let tx = connectMousePos.x;
               let ty = connectMousePos.y;
               if (hoveredNodeId && hoveredNodeId !== connectingMode.sourceId) {
-                const targetPos = nodePositions[hoveredNodeId];
-                if (targetPos) {
-                  tx = targetPos.x;
-                  ty = targetPos.y + NODE_H / 2;
+                const tgtPos = nodePositions[hoveredNodeId];
+                if (tgtPos) {
+                  if (Math.abs(pDx) > Math.abs(pDy) * pAspect) {
+                    tx = pDx > 0 ? tgtPos.x - 2 : tgtPos.x + NODE_W + 2;
+                    ty = tgtPos.y + NODE_H / 2;
+                  } else {
+                    ty = pDy > 0 ? tgtPos.y - 2 : tgtPos.y + NODE_H + 2;
+                    tx = tgtPos.x + NODE_W / 2;
+                  }
                 }
               }
+              const pDist = Math.sqrt(pDx * pDx + pDy * pDy);
+              const pCpLen = Math.min(Math.max(pDist * 0.35, 40), 120);
+              const sNx = sx - (srcPos.x + NODE_W / 2), sNy = sy - (srcPos.y + NODE_H / 2);
+              const sNLen = Math.sqrt(sNx * sNx + sNy * sNy) || 1;
               const color = connectingMode.type === "success" ? "#10B981" : "#EF4444";
+              const arrowId = connectingMode.type === "success" ? "arrow-success" : "arrow-failure";
               return (
                 <path
-                  d={`M ${sx},${sy} C ${sx + 80},${sy} ${tx - 80},${ty} ${tx},${ty}`}
+                  d={`M ${sx},${sy} C ${sx + (sNx / sNLen) * pCpLen},${sy + (sNy / sNLen) * pCpLen} ${tx},${ty} ${tx},${ty}`}
                   stroke={color}
                   strokeWidth={2}
                   strokeDasharray="6 5"
                   fill="none"
                   opacity={0.6}
+                  markerEnd={`url(#${arrowId})`}
                   style={{ pointerEvents: "none" }}
                 />
               );
@@ -1563,6 +1874,16 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             else if (isConnectSource) borderColor = connectingMode?.type === "success" ? "#10B981" : "#EF4444";
             else if (connectingMode && isHovered) borderColor = connectingMode.type === "success" ? "#10B981" : "#EF4444";
 
+            // Hover/route node highlighting
+            let nodeOpacity = 1;
+            if (isDraggingThis && dragDeleteHover) {
+              nodeOpacity = 0.5;
+            } else if (hoverConnectedNodes && !isDraggingThis && !isSelected && !connectingMode) {
+              nodeOpacity = hoverConnectedNodes.has(job.id) ? 1 : 0.15;
+            } else if (routeState && !isDraggingThis && !isSelected && !connectingMode) {
+              nodeOpacity = routeState.routeNodes.has(job.id) ? 1 : 0.35;
+            }
+
             const scheduleInfo = job.scheduleEnabled
               ? (job.cronExpression ? `cron: ${job.cronExpression}` : job.scheduleInterval ? `every ${job.scheduleInterval}m` : job.scheduleType)
               : "disabled";
@@ -1583,12 +1904,12 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
                   userSelect: "none",
                   WebkitUserSelect: "none",
                   pointerEvents: "auto",
-                  transition: dragging?.id === job.id ? "none" : "border-color 0.15s",
+                  transition: dragging?.id === job.id ? "none" : "border-color 0.15s, opacity 0.2s",
                   animation: isDraggingThis
                     ? (dragDeleteHover ? "node-shake-scared 0.2s ease-in-out infinite" : "node-shake 0.3s ease-in-out infinite")
                     : "none",
                   zIndex: isDraggingThis ? 200 : "auto",
-                  opacity: isDraggingThis && dragDeleteHover ? 0.5 : 1,
+                  opacity: nodeOpacity,
                 }}
                 onMouseEnter={() => setHoveredNodeId(job.id)}
                 onMouseLeave={() => setHoveredNodeId(null)}
