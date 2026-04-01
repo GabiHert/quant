@@ -964,42 +964,9 @@ function App() {
     </>
   );
 
+  // Settings and diff still do early returns (they have no long-lived state)
   if (view === "settings") {
     return <Settings repos={repos} onBack={() => { fetchShortcuts(); setView("dashboard"); }} />;
-  }
-
-  if (view === "jobs") {
-    return (
-      <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A" }}>
-        <JobsView
-          jobs={jobs}
-          onCreateJob={() => setModal({ type: "createJob" })}
-          onEditJob={(job) => setModal({ type: "editJob", job })}
-          onRefreshJobs={fetchJobs}
-        />
-        {renderIconStrip()}
-        {renderModals()}
-      </div>
-    );
-  }
-
-  if (view === "agents") {
-    return (
-      <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A" }}>
-        <AgentsView
-          agents={agents}
-          onCreateAgent={() => setModal({ type: "createAgent" })}
-          onEditAgent={(agent: Agent) => setModal({ type: "editAgent", agent })}
-          onDeleteAgent={async (id: string) => {
-            await api.deleteAgent(id);
-            fetchAgents();
-          }}
-          onRefreshAgents={fetchAgents}
-        />
-        {renderIconStrip()}
-        {renderModals()}
-      </div>
-    );
   }
 
   if (view === "diff" && diffSession) {
@@ -1013,7 +980,40 @@ function App() {
     );
   }
 
+  // Jobs and agents are rendered as overlays so the dashboard stays mounted
+  // (sessions/terminals keep running in the background)
   return (
+    <>
+      {view === "jobs" && (
+        <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A", position: "absolute", top: 0, left: 0, zIndex: 20 }}>
+          <JobsView
+            jobs={jobs}
+            onCreateJob={() => setModal({ type: "createJob" })}
+            onEditJob={(job) => setModal({ type: "editJob", job })}
+            onRefreshJobs={fetchJobs}
+          />
+          {renderIconStrip()}
+          {renderModals()}
+        </div>
+      )}
+
+      {view === "agents" && (
+        <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A", position: "absolute", top: 0, left: 0, zIndex: 20 }}>
+          <AgentsView
+            agents={agents}
+            onCreateAgent={() => setModal({ type: "createAgent" })}
+            onEditAgent={(agent: Agent) => setModal({ type: "editAgent", agent })}
+            onDeleteAgent={async (id: string) => {
+              await api.deleteAgent(id);
+              fetchAgents();
+            }}
+            onRefreshAgents={fetchAgents}
+          />
+          {renderIconStrip()}
+          {renderModals()}
+        </div>
+      )}
+
     <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A" }}>
       <Sidebar
         repos={repos}
@@ -1239,6 +1239,7 @@ function App() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

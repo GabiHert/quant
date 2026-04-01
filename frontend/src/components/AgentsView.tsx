@@ -15,7 +15,10 @@ const WALL_T = 10;
 const PX = 2;
 const SPRITE_W = 8;
 const SPRITE_H = 10;
-const TICK_INTERVAL = 3; // tick NPCs every N frames
+const TICK_INTERVAL = 5;
+const CANVAS_W = 760;
+const CANVAS_H = 500;
+const SIDEBAR_W = 220;
 
 // Colors
 const C_BG = "#0A0A0A";
@@ -122,14 +125,13 @@ function generatePhrases(agent: Agent): string[] {
 // Office layout generation
 // ---------------------------------------------------------------------------
 function buildOfficeLayout(canvasW: number, canvasH: number, agents: Agent[]): OfficeLayout {
-  const headerH = 0; // header is outside canvas
   const gridW = Math.floor(canvasW / TILE);
   const gridH = Math.floor(canvasH / TILE);
   const occupied: boolean[][] = Array.from({ length: gridH }, () => Array(gridW).fill(false));
   const furniture: FurnitureItem[] = [];
   const desks: Rect[] = [];
 
-  // Mark walls as occupied (outer half-tile border)
+  // Mark walls as occupied
   const wallTiles = Math.ceil(WALL_T / TILE);
   for (let y = 0; y < gridH; y++) {
     for (let x = 0; x < gridW; x++) {
@@ -165,9 +167,16 @@ function buildOfficeLayout(canvasW: number, canvasH: number, agents: Agent[]): O
   const midX = Math.floor((innerLeft + innerRight) / 2);
   const midY = Math.floor((innerTop + innerBottom) / 2);
 
+  // --- Rug in center (large, warm red/maroon) ---
+  const rugW = 8;
+  const rugH = 5;
+  const rugX = midX - Math.floor(rugW / 2);
+  const rugY = midY - Math.floor(rugH / 2);
+  furniture.push({ tx: rugX, ty: rugY, tw: rugW, th: rugH, kind: "rug" });
+
   // --- Desk Zone (top-left quadrant) ---
-  const deskStartX = innerLeft + 1;
-  const deskStartY = innerTop + 1;
+  const deskStartX = innerLeft + 2;
+  const deskStartY = innerTop + 2;
   const desksPerRow = Math.min(4, Math.floor((midX - deskStartX - 1) / 4));
   const maxDesks = Math.min(agents.length, 12);
   for (let i = 0; i < maxDesks; i++) {
@@ -178,13 +187,17 @@ function buildOfficeLayout(canvasW: number, canvasH: number, agents: Agent[]): O
     if (dtx + 3 <= midX && dty + 2 <= midY && canPlace(dtx, dty, 3, 2)) {
       place(dtx, dty, 3, 2, "desk", agents[i]?.color);
       desks.push({ tx: dtx, ty: dty, tw: 3, th: 2 });
+      // Chair below desk
+      if (dty + 2 < innerBottom && canPlace(dtx + 1, dty + 2, 1, 1)) {
+        place(dtx + 1, dty + 2, 1, 1, "chair");
+      }
     }
   }
 
   // --- Meeting Zone (top-right quadrant) ---
   const meetX = midX + 2;
   const meetY = innerTop + 2;
-  // Whiteboard
+  // Whiteboard with cards
   if (meetX + 4 < innerRight && meetY + 1 < midY) {
     place(meetX, innerTop, 4, 1, "whiteboard");
   }
@@ -194,11 +207,11 @@ function buildOfficeLayout(canvasW: number, canvasH: number, agents: Agent[]): O
   }
 
   // --- Lounge Zone (bottom-left quadrant) ---
-  const loungeX = innerLeft + 1;
+  const loungeX = innerLeft + 2;
   const loungeY = midY + 2;
-  // Rug
+  // Rug under lounge
   if (loungeX + 4 < midX && loungeY + 3 < innerBottom) {
-    furniture.push({ tx: loungeX, ty: loungeY, tw: 4, th: 3, kind: "rug" }); // don't mark occupied
+    furniture.push({ tx: loungeX, ty: loungeY, tw: 4, th: 3, kind: "rug" });
   }
   // Couch
   if (canPlace(loungeX, loungeY + 3, 3, 1)) {
@@ -208,9 +221,9 @@ function buildOfficeLayout(canvasW: number, canvasH: number, agents: Agent[]): O
   if (canPlace(loungeX + 1, loungeY + 1, 2, 1)) {
     place(loungeX + 1, loungeY + 1, 2, 1, "coffee_table");
   }
-  // Plant
-  if (canPlace(loungeX + 4, loungeY, 1, 1)) {
-    place(loungeX + 4, loungeY, 1, 1, "plant");
+  // Water cooler near lounge
+  if (canPlace(loungeX + 5, loungeY, 1, 1)) {
+    place(loungeX + 5, loungeY, 1, 1, "water_cooler");
   }
 
   // --- Kitchen Zone (bottom-right quadrant) ---
@@ -245,12 +258,65 @@ function buildOfficeLayout(canvasW: number, canvasH: number, agents: Agent[]): O
     furniture.push({ tx: innerRight - 6, ty: 0, tw: 5, th: 1, kind: "kanban" });
   }
 
-  // --- Wall Decorations ---
+  // --- Bookshelves along left wall ---
+  for (let i = 0; i < 3; i++) {
+    const bsy = innerTop + 1 + i * 3;
+    if (bsy + 2 <= midY && canPlace(innerLeft, bsy, 1, 2)) {
+      place(innerLeft, bsy, 1, 2, "bookshelf");
+    }
+  }
+
+  // --- Bookshelves along right wall ---
+  for (let i = 0; i < 2; i++) {
+    const bsy = innerTop + 1 + i * 3;
+    if (bsy + 2 <= midY && canPlace(innerRight - 1, bsy, 1, 2)) {
+      place(innerRight - 1, bsy, 1, 2, "bookshelf");
+    }
+  }
+
+  // --- Plants in corners and next to desks ---
+  const plantPositions = [
+    { tx: innerLeft + 1, ty: innerTop + 1 },
+    { tx: innerRight - 2, ty: innerTop + 1 },
+    { tx: innerLeft + 1, ty: innerBottom - 2 },
+    { tx: innerRight - 2, ty: innerBottom - 2 },
+    { tx: midX - 1, ty: innerTop + 1 },
+    { tx: midX + 1, ty: innerBottom - 2 },
+  ];
+  for (const p of plantPositions) {
+    if (p.tx >= 0 && p.tx < gridW && p.ty >= 0 && p.ty < gridH && canPlace(p.tx, p.ty, 1, 1)) {
+      place(p.tx, p.ty, 1, 1, "plant");
+    }
+  }
+
+  // --- Coat rack near entrance (bottom wall) ---
+  const coatX = midX - 1;
+  const coatY = innerBottom - 1;
+  if (canPlace(coatX, coatY, 1, 1)) {
+    place(coatX, coatY, 1, 1, "coat_rack");
+  }
+
+  // --- Door on bottom wall ---
+  furniture.push({ tx: midX, ty: gridH - 1, tw: 2, th: 1, kind: "door" });
+
+  // --- Posters/pictures on top wall ---
   const rng = makeRng(agents.length * 7 + 42);
-  const posterCount = Math.min(agents.length, 3);
+  const posterCount = Math.min(agents.length + 2, 5);
   for (let i = 0; i < posterCount; i++) {
-    const px = innerLeft + 2 + Math.floor(rng() * Math.max(1, (midX - innerLeft - 4)));
-    furniture.push({ tx: px, ty: 0, tw: 2, th: 1, kind: "poster", color: agents[i]?.color });
+    const px = innerLeft + 2 + Math.floor(rng() * Math.max(1, (gridW - 8)));
+    furniture.push({ tx: px, ty: 0, tw: 2, th: 1, kind: "poster", color: agents[i % agents.length]?.color });
+  }
+
+  // --- Ceiling lamp circles (light spots on floor) ---
+  const lampPositions = [
+    { tx: Math.floor(gridW * 0.25), ty: Math.floor(gridH * 0.3) },
+    { tx: Math.floor(gridW * 0.75), ty: Math.floor(gridH * 0.3) },
+    { tx: Math.floor(gridW * 0.25), ty: Math.floor(gridH * 0.7) },
+    { tx: Math.floor(gridW * 0.75), ty: Math.floor(gridH * 0.7) },
+    { tx: midX, ty: midY },
+  ];
+  for (const lp of lampPositions) {
+    furniture.push({ tx: lp.tx - 1, ty: lp.ty - 1, tw: 3, th: 3, kind: "ceiling_lamp" });
   }
 
   return {
@@ -270,17 +336,15 @@ function buildOfficeLayout(canvasW: number, canvasH: number, agents: Agent[]): O
 function createNpc(agent: Agent, index: number, layout: OfficeLayout): Npc {
   const enabledSkills = Object.values(agent.skills).filter(Boolean).length;
   const enabledMcp = Object.values(agent.mcpServers).filter(Boolean).length;
-  const speed = 0.3 + (enabledSkills / 60) * 0.5;
+  const speed = 0.15 + (enabledSkills / 80) * 0.25;
   const sociability = Math.min(enabledMcp / 3, 1.0);
   const restless = agent.autonomousMode ? 0.7 : 0.3;
 
   // Start near their desk or in a corridor
   let startTx = layout.gridW > 4 ? 3 + (index % Math.max(1, layout.gridW - 6)) : 3;
   let startTy = layout.gridH > 4 ? 3 + Math.floor(index / Math.max(1, layout.gridW - 6)) * 2 : 3;
-  // Clamp
   startTx = Math.min(startTx, layout.gridW - 2);
   startTy = Math.min(startTy, layout.gridH - 2);
-  // If on occupied tile, nudge
   while (startTy < layout.gridH - 1 && layout.occupied[startTy] && layout.occupied[startTy][startTx]) {
     startTy++;
   }
@@ -293,7 +357,7 @@ function createNpc(agent: Agent, index: number, layout: OfficeLayout): Npc {
     targetTy: startTy,
     dir: "down",
     state: "idle",
-    stateTimer: 30 + Math.floor(Math.random() * 60),
+    stateTimer: 60 + Math.floor(Math.random() * 90),
     walkFrame: 0,
     deskIdx: index < layout.desks.length ? index : -1,
     speed,
@@ -302,7 +366,7 @@ function createNpc(agent: Agent, index: number, layout: OfficeLayout): Npc {
     phrases: generatePhrases(agent),
     bubbleText: "",
     bubbleTimer: 0,
-    bubbleCooldown: 200 + Math.floor(Math.random() * 200),
+    bubbleCooldown: 400 + Math.floor(Math.random() * 400),
     workBob: 0,
   };
 }
@@ -318,8 +382,8 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
     npc.bubbleCooldown--;
   } else {
     npc.bubbleText = npc.phrases[Math.floor(Math.random() * npc.phrases.length)];
-    npc.bubbleTimer = 80;
-    npc.bubbleCooldown = 200 + Math.floor(Math.random() * 200);
+    npc.bubbleTimer = 120;
+    npc.bubbleCooldown = 400 + Math.floor(Math.random() * 400);
   }
 
   switch (npc.state) {
@@ -332,23 +396,20 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
         const socChance = workChance + (npc.sociability > 0.5 ? 0.4 : 0.2);
 
         if (roll < walkChance) {
-          // Walk to random open tile
           const tx = 2 + Math.floor(Math.random() * Math.max(1, layout.gridW - 4));
           const ty = 2 + Math.floor(Math.random() * Math.max(1, layout.gridH - 4));
           npc.targetTx = tx;
           npc.targetTy = ty;
           npc.state = "walking";
-          npc.stateTimer = 300;
+          npc.stateTimer = 600;
         } else if (roll < workChance && npc.deskIdx >= 0 && npc.deskIdx < layout.desks.length) {
-          // Walk to desk
           const desk = layout.desks[npc.deskIdx];
           npc.targetTx = desk.tx + 1;
-          npc.targetTy = desk.ty + 2; // sit in front of desk
+          npc.targetTy = desk.ty + 2;
           if (npc.targetTy >= layout.gridH - 1) npc.targetTy = desk.ty - 1;
           npc.state = "walking";
-          npc.stateTimer = 300;
+          npc.stateTimer = 600;
         } else if (roll < socChance) {
-          // Walk toward nearest NPC
           let nearest: Npc | null = null;
           let minDist = Infinity;
           for (const other of npcs) {
@@ -360,17 +421,16 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
             npc.targetTx = nearest.tx + (nearest.tx > npc.tx ? -1 : 1);
             npc.targetTy = nearest.ty;
             npc.state = "walking";
-            npc.stateTimer = 300;
+            npc.stateTimer = 600;
           } else {
-            npc.stateTimer = 20 + Math.floor(Math.random() * 40);
+            npc.stateTimer = 60 + Math.floor(Math.random() * 90);
           }
         } else {
-          // Walk to lounge/kitchen
           const target = Math.random() > 0.5 ? layout.loungeCenter : layout.kitchenCenter;
           npc.targetTx = target.tx;
           npc.targetTy = target.ty;
           npc.state = "walking";
-          npc.stateTimer = 300;
+          npc.stateTimer = 600;
         }
       }
       break;
@@ -378,34 +438,30 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
     case "walking": {
       npc.stateTimer--;
       if (npc.stateTimer <= 0 || (npc.tx === npc.targetTx && npc.ty === npc.targetTy)) {
-        // Arrived or timed out
-        // Check if at desk → working, near another NPC → socializing, else idle
         if (npc.deskIdx >= 0 && npc.deskIdx < layout.desks.length) {
           const desk = layout.desks[npc.deskIdx];
           if (Math.abs(npc.tx - desk.tx - 1) <= 1 && Math.abs(npc.ty - desk.ty - 2) <= 1) {
             npc.state = "working";
             npc.dir = "up";
-            npc.stateTimer = 100 + Math.floor(Math.random() * 100);
+            npc.stateTimer = 200 + Math.floor(Math.random() * 200);
             break;
           }
         }
-        // Check if near another NPC
         for (const other of npcs) {
           if (other === npc) continue;
           if (Math.abs(other.tx - npc.tx) + Math.abs(other.ty - npc.ty) <= 2) {
             npc.state = "socializing";
-            // Face them
             if (other.tx > npc.tx) npc.dir = "right";
             else if (other.tx < npc.tx) npc.dir = "left";
             else if (other.ty > npc.ty) npc.dir = "down";
             else npc.dir = "up";
-            npc.stateTimer = 60 + Math.floor(Math.random() * 40);
+            npc.stateTimer = 100 + Math.floor(Math.random() * 80);
             break;
           }
         }
         if (npc.state === "walking") {
           npc.state = "idle";
-          npc.stateTimer = 15 + Math.floor(Math.random() * 30);
+          npc.stateTimer = 60 + Math.floor(Math.random() * 90);
         }
         break;
       }
@@ -416,7 +472,6 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
       let nextTx = npc.tx;
       let nextTy = npc.ty;
 
-      // Prefer horizontal
       if (dx !== 0) {
         nextTx = npc.tx + (dx > 0 ? 1 : -1);
         npc.dir = dx > 0 ? "right" : "left";
@@ -425,13 +480,11 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
         npc.dir = dy > 0 ? "down" : "up";
       }
 
-      // Collision check (walls + furniture, NPCs can overlap)
       if (nextTx >= 1 && nextTx < layout.gridW - 1 && nextTy >= 1 && nextTy < layout.gridH - 1 &&
           !layout.occupied[nextTy][nextTx]) {
         npc.tx = nextTx;
         npc.ty = nextTy;
       } else {
-        // Try perpendicular
         if (dy !== 0 && dx === 0) {
           const tryX = npc.tx + (Math.random() > 0.5 ? 1 : -1);
           if (tryX >= 1 && tryX < layout.gridW - 1 && !layout.occupied[npc.ty][tryX]) {
@@ -445,7 +498,6 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
             npc.dir = tryY > npc.ty ? "down" : "up";
           }
         } else {
-          // Give up on this step
           npc.stateTimer = Math.min(npc.stateTimer, 5);
         }
       }
@@ -458,7 +510,7 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
       npc.workBob = (npc.workBob + 1) % 20;
       if (npc.stateTimer <= 0) {
         npc.state = "idle";
-        npc.stateTimer = 20 + Math.floor(Math.random() * 40);
+        npc.stateTimer = 60 + Math.floor(Math.random() * 90);
       }
       break;
     }
@@ -466,7 +518,7 @@ function tickNpc(npc: Npc, npcs: Npc[], layout: OfficeLayout) {
       npc.stateTimer--;
       if (npc.stateTimer <= 0) {
         npc.state = "idle";
-        npc.stateTimer = 20 + Math.floor(Math.random() * 40);
+        npc.stateTimer = 60 + Math.floor(Math.random() * 90);
       }
       break;
     }
@@ -489,13 +541,9 @@ function drawFloor(ctx: CanvasRenderingContext2D, w: number, h: number) {
 
 function drawWalls(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.fillStyle = C_WALL;
-  // Top wall
   ctx.fillRect(0, 0, w, WALL_T);
-  // Bottom wall
   ctx.fillRect(0, h - WALL_T, w, WALL_T);
-  // Left wall
   ctx.fillRect(0, 0, WALL_T, h);
-  // Right wall
   ctx.fillRect(w - WALL_T, 0, WALL_T, h);
 
   // Inner trim
@@ -506,6 +554,20 @@ function drawWalls(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.fillRect(w - WALL_T - 2, WALL_T, 2, h - WALL_T * 2);
 }
 
+function drawDoor(ctx: CanvasRenderingContext2D, item: FurnitureItem) {
+  const x = item.tx * TILE;
+  const y = item.ty * TILE;
+  const w = item.tw * TILE;
+  const h = item.th * TILE;
+  // Dark gap in wall
+  ctx.fillStyle = "#1A1A0A";
+  ctx.fillRect(x, y, w, h);
+  // Door frame
+  ctx.fillStyle = C_WALL_TRIM;
+  ctx.fillRect(x, y, 2, h);
+  ctx.fillRect(x + w - 2, y, 2, h);
+}
+
 function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agents: Agent[]) {
   const x = item.tx * TILE;
   const y = item.ty * TILE;
@@ -514,7 +576,6 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
 
   switch (item.kind) {
     case "desk": {
-      // Desk body
       ctx.fillStyle = C_DESK_SIDE;
       ctx.fillRect(x, y, w, h);
       ctx.fillStyle = C_DESK_TOP;
@@ -522,7 +583,6 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
       // Monitor
       ctx.fillStyle = "#111";
       ctx.fillRect(x + w / 2 - 6, y + 3, 12, 8);
-      // Screen line in agent color
       if (item.color) {
         ctx.fillStyle = item.color;
         ctx.fillRect(x + w / 2 - 4, y + 5, 8, 1);
@@ -530,26 +590,32 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
       }
       break;
     }
+    case "chair": {
+      ctx.fillStyle = C_COUCH_FRAME;
+      ctx.fillRect(x + 4, y + 2, TILE - 8, TILE - 4);
+      ctx.fillStyle = C_COUCH_CUSHION;
+      ctx.fillRect(x + 5, y + 3, TILE - 10, TILE - 6);
+      break;
+    }
     case "whiteboard": {
       ctx.fillStyle = C_WHITEBOARD;
       ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = C_BORDER;
       ctx.strokeStyle = C_DIMMER;
       ctx.lineWidth = 1;
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      // Colored dots
-      for (let i = 0; i < Math.min(agents.length, 5); i++) {
-        ctx.fillStyle = agents[i].color || C_ACCENT;
-        ctx.fillRect(x + 4 + i * 8, y + h / 2 - 2, 4, 4);
+      // Colored cards on whiteboard
+      const cardColors = ["#EF4444", "#3B82F6", C_ACCENT, "#F59E0B", "#A855F7"];
+      for (let i = 0; i < Math.min(agents.length + 2, 6); i++) {
+        ctx.fillStyle = cardColors[i % cardColors.length];
+        ctx.fillRect(x + 4 + i * 10, y + h / 2 - 3, 8, 5);
       }
       break;
     }
     case "meeting_table": {
       ctx.fillStyle = C_DESK_TOP;
       ctx.beginPath();
-      ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) / 2 * TILE / TILE * 0.9, 0, Math.PI * 2);
+      ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) / 2 * 0.9, 0, Math.PI * 2);
       ctx.fill();
-      // Chairs
       ctx.fillStyle = C_COUCH_FRAME;
       ctx.fillRect(x - 4, y + h / 2 - 3, 4, 6);
       ctx.fillRect(x + w, y + h / 2 - 3, 4, 6);
@@ -564,7 +630,6 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
           ctx.fillRect(x + rx * TILE, y + ry * TILE, TILE, TILE);
         }
       }
-      // Border
       ctx.strokeStyle = C_RUG_B;
       ctx.lineWidth = 2;
       ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
@@ -573,7 +638,6 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
     case "couch": {
       ctx.fillStyle = C_COUCH_FRAME;
       ctx.fillRect(x, y, w, h);
-      // Cushions
       const cushionW = Math.floor(w / 3);
       for (let i = 0; i < 3; i++) {
         ctx.fillStyle = C_COUCH_CUSHION;
@@ -584,7 +648,6 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
     case "coffee_table": {
       ctx.fillStyle = C_COFFEE_TABLE;
       ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
-      // Legs
       ctx.fillStyle = C_DESK_SIDE;
       ctx.fillRect(x, y, 3, 3);
       ctx.fillRect(x + w - 3, y, 3, 3);
@@ -593,10 +656,8 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
       break;
     }
     case "plant": {
-      // Pot
       ctx.fillStyle = C_PLANT_POT;
       ctx.fillRect(x + 4, y + h - 8, TILE - 8, 8);
-      // Leaves
       ctx.fillStyle = C_PLANT_LEAF;
       ctx.fillRect(x + 2, y + 2, 6, 6);
       ctx.fillRect(x + 8, y, 6, 6);
@@ -613,10 +674,8 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
     case "fridge": {
       ctx.fillStyle = C_FRIDGE;
       ctx.fillRect(x, y, w, h);
-      // Handle
       ctx.fillStyle = C_DIMMER;
       ctx.fillRect(x + w - 4, y + 6, 2, h - 12);
-      // Line between doors
       ctx.fillStyle = "#B0B0B0";
       ctx.fillRect(x + 1, y + Math.floor(h * 0.4), w - 2, 1);
       break;
@@ -624,15 +683,64 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
     case "coffee_machine": {
       ctx.fillStyle = "#333";
       ctx.fillRect(x + 4, y + 4, TILE - 8, TILE - 8);
-      // Red LED
       ctx.fillStyle = "#EF4444";
       ctx.fillRect(x + TILE - 6, y + 5, 2, 2);
+      break;
+    }
+    case "water_cooler": {
+      ctx.fillStyle = "#9DD5EA";
+      ctx.fillRect(x + 4, y + 2, TILE - 8, TILE - 6);
+      ctx.fillStyle = "#C5E8F5";
+      ctx.fillRect(x + 5, y + 3, TILE - 10, 4);
+      // Base
+      ctx.fillStyle = "#666";
+      ctx.fillRect(x + 3, y + TILE - 4, TILE - 6, 4);
+      break;
+    }
+    case "bookshelf": {
+      ctx.fillStyle = "#4A3020";
+      ctx.fillRect(x, y, w, h);
+      // Shelves
+      const shelfCount = Math.floor(h / 8);
+      for (let s = 0; s < shelfCount; s++) {
+        ctx.fillStyle = "#5A3A28";
+        ctx.fillRect(x + 1, y + 2 + s * 8, w - 2, 1);
+        // Books
+        const bookColors = ["#EF4444", "#3B82F6", "#22C55E", "#F59E0B", "#A855F7"];
+        for (let b = 0; b < 3; b++) {
+          ctx.fillStyle = bookColors[(s + b) % bookColors.length];
+          ctx.fillRect(x + 2 + b * 5, y + s * 8 + 3, 4, 5);
+        }
+      }
+      break;
+    }
+    case "coat_rack": {
+      // Pole
+      ctx.fillStyle = "#666";
+      ctx.fillRect(x + TILE / 2 - 1, y + 2, 2, TILE - 4);
+      // Hooks
+      ctx.fillStyle = "#888";
+      ctx.fillRect(x + 3, y + 4, 4, 2);
+      ctx.fillRect(x + TILE - 7, y + 4, 4, 2);
+      // Base
+      ctx.fillRect(x + 4, y + TILE - 3, TILE - 8, 3);
+      break;
+    }
+    case "ceiling_lamp": {
+      // Subtle light spot on floor
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const radius = Math.min(w, h) / 2;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      grad.addColorStop(0, "rgba(255, 240, 200, 0.06)");
+      grad.addColorStop(1, "rgba(255, 240, 200, 0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, w, h);
       break;
     }
     case "server_rack": {
       ctx.fillStyle = C_SERVER;
       ctx.fillRect(x, y, w, h);
-      // Blinking LEDs (use time-based approach in render, but static here)
       for (let i = 0; i < 4; i++) {
         ctx.fillStyle = i % 2 === 0 ? "#22C55E" : "#3B82F6";
         ctx.fillRect(x + 3, y + 4 + i * 8, 3, 2);
@@ -644,12 +752,10 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
     case "kanban": {
       ctx.fillStyle = "#1F1F1F";
       ctx.fillRect(x, y, w, h);
-      // Columns
       const colW = Math.floor(w / 3);
       for (let c = 0; c < 3; c++) {
         ctx.fillStyle = "#333";
         ctx.fillRect(x + c * colW, y, 1, h);
-        // Cards
         const cardColors = ["#EF4444", "#3B82F6", C_ACCENT, "#F59E0B"];
         for (let r = 0; r < 2; r++) {
           ctx.fillStyle = cardColors[(c + r) % cardColors.length];
@@ -666,14 +772,17 @@ function drawFurniture(ctx: CanvasRenderingContext2D, item: FurnitureItem, agent
       ctx.strokeRect(x + 2.5, y + 1.5, w - 5, h - 3);
       break;
     }
+    case "door": {
+      drawDoor(ctx, item);
+      break;
+    }
   }
 }
 
-function drawSprite(ctx: CanvasRenderingContext2D, npc: Npc, tick: number) {
+function drawSprite(ctx: CanvasRenderingContext2D, npc: Npc, _tick: number) {
   const px = npc.tx * TILE + (TILE - SPRITE_W * PX) / 2;
   let py = npc.ty * TILE + (TILE - SPRITE_H * PX) / 2;
 
-  // Work bobbing
   if (npc.state === "working") {
     py += npc.workBob < 10 ? -1 : 1;
   }
@@ -686,7 +795,6 @@ function drawSprite(ctx: CanvasRenderingContext2D, npc: Npc, tick: number) {
   ctx.fillStyle = "rgba(0,0,0,0.3)";
   ctx.fillRect(px + PX, py + SPRITE_H * PX - PX, SPRITE_W * PX - PX * 2, PX);
 
-  // Helper to draw a pixel
   const dot = (gx: number, gy: number, c: string) => {
     ctx.fillStyle = c;
     ctx.fillRect(px + gx * PX, py + gy * PX, PX, PX);
@@ -696,19 +804,14 @@ function drawSprite(ctx: CanvasRenderingContext2D, npc: Npc, tick: number) {
   const skinColor = "#F5D0A9";
   const hairColor = darkenColor(color, 0.4);
 
-  // Hair top (row 0)
   for (let i = 2; i <= 5; i++) dot(i, 0, hairColor);
 
-  // Head rows 1-3
   if (npc.dir === "down") {
-    // row 1: hair sides, skin middle
     dot(1, 1, hairColor); dot(2, 1, skinColor); dot(3, 1, skinColor);
     dot(4, 1, skinColor); dot(5, 1, skinColor); dot(6, 1, hairColor);
-    // row 2: eyes
-    dot(1, 2, hairColor); dot(2, 2, skinColor); dot(3, 2, "#333"); // left eye
-    dot(4, 2, skinColor); dot(5, 2, "#333"); // right eye
+    dot(1, 2, hairColor); dot(2, 2, skinColor); dot(3, 2, "#333");
+    dot(4, 2, skinColor); dot(5, 2, "#333");
     dot(6, 2, skinColor);
-    // row 3: mouth area
     dot(2, 3, skinColor); dot(3, 3, skinColor); dot(4, 3, skinColor); dot(5, 3, skinColor);
   } else if (npc.dir === "up") {
     dot(1, 1, hairColor); dot(2, 1, hairColor); dot(3, 1, hairColor);
@@ -723,7 +826,6 @@ function drawSprite(ctx: CanvasRenderingContext2D, npc: Npc, tick: number) {
     dot(4, 2, skinColor); dot(5, 2, skinColor);
     dot(2, 3, skinColor); dot(3, 3, skinColor); dot(4, 3, skinColor); dot(5, 3, skinColor);
   } else {
-    // right
     dot(3, 1, skinColor); dot(4, 1, skinColor); dot(5, 1, skinColor);
     dot(6, 1, hairColor); dot(7, 1, hairColor);
     dot(3, 2, skinColor); dot(4, 2, skinColor); dot(5, 2, "#333");
@@ -737,7 +839,6 @@ function drawSprite(ctx: CanvasRenderingContext2D, npc: Npc, tick: number) {
     for (let col = 2; col <= 5; col++) {
       dot(col, row, bodyColor);
     }
-    // Arms
     if (row >= 4 && row <= 6) {
       dot(1, row, bodyColor);
       dot(6, row, bodyColor);
@@ -773,17 +874,22 @@ function drawBubble(ctx: CanvasRenderingContext2D, npc: Npc) {
   const bx = px - bw / 2;
   const by = py - bh;
 
-  // Fade out in last 20 ticks
   const alpha = npc.bubbleTimer < 20 ? npc.bubbleTimer / 20 : 1;
   ctx.globalAlpha = alpha;
 
-  // Bubble background
+  // Background
   ctx.fillStyle = "#FAFAFA";
   ctx.beginPath();
   ctx.roundRect(bx, by, bw, bh, 3);
   ctx.fill();
 
+  // Border
+  ctx.strokeStyle = "#2a2a2a";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
   // Tail
+  ctx.fillStyle = "#FAFAFA";
   ctx.beginPath();
   ctx.moveTo(px - 3, by + bh);
   ctx.lineTo(px, by + bh + 4);
@@ -826,23 +932,21 @@ function darkenColor(hex: string, amount: number): string {
 // Component
 // ---------------------------------------------------------------------------
 export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDeleteAgent, onRefreshAgents }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const npcsRef = useRef<Npc[]>([]);
   const layoutRef = useRef<OfficeLayout | null>(null);
-  const sizeRef = useRef({ w: 0, h: 0 });
   const frameRef = useRef(0);
   const tickRef = useRef(0);
   const rafRef = useRef(0);
-  const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [popup, setPopup] = useState<{ agent: Agent; x: number; y: number } | null>(null);
+  const [hoveredSidebarId, setHoveredSidebarId] = useState<string | null>(null);
 
-  // Build layout + NPCs when agents or canvas size changes
-  const rebuildLayout = useCallback((w: number, h: number, agentList: Agent[]) => {
-    if (w < 100 || h < 100) return;
-    const layout = buildOfficeLayout(w, h, agentList);
+  // Build layout + NPCs when agents change
+  const rebuildLayout = useCallback((agentList: Agent[]) => {
+    const layout = buildOfficeLayout(CANVAS_W, CANVAS_H, agentList);
     layoutRef.current = layout;
 
-    // Rebuild NPCs, preserving positions if agent still exists
     const oldNpcs = npcsRef.current;
     const newNpcs = agentList.map((agent, i) => {
       const existing = oldNpcs.find(n => n.agent.id === agent.id);
@@ -857,29 +961,9 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
     npcsRef.current = newNpcs;
   }, []);
 
-  // ResizeObserver
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        const w = Math.floor(width);
-        const h = Math.floor(height);
-        if (w !== sizeRef.current.w || h !== sizeRef.current.h) {
-          sizeRef.current = { w, h };
-          setCanvasSize({ w, h });
-          rebuildLayout(w, h, agents);
-        }
-      }
-    });
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [agents, rebuildLayout]);
-
   // Rebuild when agents change
   useEffect(() => {
-    rebuildLayout(sizeRef.current.w, sizeRef.current.h, agents);
+    rebuildLayout(agents);
   }, [agents, rebuildLayout]);
 
   // Render loop
@@ -893,15 +977,13 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
 
     function render() {
       if (!running || !ctx) return;
-      const { w, h } = sizeRef.current;
       const layout = layoutRef.current;
       const npcs = npcsRef.current;
 
-      if (w > 0 && h > 0 && layout) {
-        canvas!.width = w;
-        canvas!.height = h;
+      if (layout) {
+        canvas!.width = CANVAS_W;
+        canvas!.height = CANVAS_H;
 
-        // Tick NPCs
         frameRef.current++;
         if (frameRef.current % TICK_INTERVAL === 0) {
           tickRef.current++;
@@ -910,34 +992,29 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
           }
         }
 
-        // Clear
         ctx.fillStyle = C_BG;
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-        // Floor
-        drawFloor(ctx, w, h);
+        drawFloor(ctx, CANVAS_W, CANVAS_H);
+        drawWalls(ctx, CANVAS_W, CANVAS_H);
 
-        // Walls
-        drawWalls(ctx, w, h);
-
-        // Furniture (bottom layer: rugs first)
+        // Furniture: ceiling lamps first, then rugs, then rest
+        for (const item of layout.furniture) {
+          if (item.kind === "ceiling_lamp") drawFurniture(ctx, item, agents);
+        }
         for (const item of layout.furniture) {
           if (item.kind === "rug") drawFurniture(ctx, item, agents);
         }
         for (const item of layout.furniture) {
-          if (item.kind !== "rug") drawFurniture(ctx, item, agents);
+          if (item.kind !== "rug" && item.kind !== "ceiling_lamp") drawFurniture(ctx, item, agents);
         }
 
-        // Server LEDs (animated)
         drawServerLeds(ctx, layout, tickRef.current);
 
-        // NPCs (sorted by y for depth)
         const sorted = [...npcs].sort((a, b) => a.ty - b.ty);
         for (const npc of sorted) {
           drawSprite(ctx, npc, tickRef.current);
         }
-
-        // Speech bubbles (on top)
         for (const npc of sorted) {
           drawBubble(ctx, npc);
         }
@@ -951,7 +1028,7 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
       running = false;
       cancelAnimationFrame(rafRef.current);
     };
-  }, [agents, canvasSize]);
+  }, [agents]);
 
   // Click detection on canvas
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -967,16 +1044,31 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
       const ny = npc.ty * TILE + TILE / 2;
       const dist = Math.sqrt((mx - nx) ** 2 + (my - ny) ** 2);
       if (dist < TILE * 1.2) {
-        onEditAgent(npc.agent);
+        setSelectedAgentId(npc.agent.id);
+        setPopup({
+          agent: npc.agent,
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        });
         return;
       }
     }
-  }, [onEditAgent]);
+    // Clicked empty space
+    setPopup(null);
+  }, []);
+
+  // Dismiss popup on outside click
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    // Only dismiss if clicking the container background (not sidebar, not canvas, not popup)
+    if ((e.target as HTMLElement).dataset.dismissPopup === "true") {
+      setPopup(null);
+    }
+  }, []);
 
   // Empty state
   if (agents.length === 0) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C_BG, fontFamily: FONT }}>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", overflow: "hidden", background: C_BG, fontFamily: FONT }}>
         {/* Header */}
         <div style={{
           height: 56, minHeight: 56, display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -991,7 +1083,6 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
             fontFamily: FONT, fontSize: 12, padding: "6px 14px", borderRadius: 4, cursor: "pointer",
           }}>+ new agent</button>
         </div>
-        {/* Empty */}
         <div style={{
           flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
         }}>
@@ -1006,7 +1097,7 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C_BG, fontFamily: FONT }}>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", overflow: "hidden", background: C_BG, fontFamily: FONT }}>
       {/* Header */}
       <div style={{
         height: 56, minHeight: 56, display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1022,46 +1113,145 @@ export default function AgentsView({ agents, onCreateAgent, onEditAgent, onDelet
         }}>+ new agent</button>
       </div>
 
-      {/* Office */}
-      <div ref={containerRef} style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        <canvas
-          ref={canvasRef}
-          width={canvasSize.w}
-          height={canvasSize.h}
-          onClick={handleCanvasClick}
-          style={{ display: "block", width: "100%", height: "100%", cursor: "pointer" }}
-        />
+      {/* Body: sidebar + office */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Agent List Sidebar */}
+        <div style={{
+          width: SIDEBAR_W, minWidth: SIDEBAR_W, background: "#111111", borderRight: `1px solid ${C_BORDER}`,
+          display: "flex", flexDirection: "column", overflow: "hidden",
+        }}>
+          {/* Sidebar header */}
+          <div style={{ padding: "10px 12px 6px 12px" }}>
+            <span style={{ color: C_DIMMER, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>agents</span>
+          </div>
 
-        {/* Agent name labels (HTML overlays for crisp text) */}
-        {npcsRef.current.map((npc) => {
-          const lx = npc.tx * TILE + TILE / 2;
-          const ly = npc.ty * TILE - 22;
-          // Don't show if bubble is active (bubble takes that space)
-          if (npc.bubbleTimer > 0) return null;
-          return (
-            <div
-              key={npc.agent.id}
-              onClick={(e) => { e.stopPropagation(); onEditAgent(npc.agent); }}
-              style={{
-                position: "absolute",
-                left: lx,
-                top: ly,
-                transform: "translateX(-50%)",
-                color: npc.agent.color || C_TEXT,
-                fontSize: 9,
-                fontFamily: FONT,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-                pointerEvents: "auto",
-                cursor: "pointer",
-                textShadow: "0 1px 3px rgba(0,0,0,0.8)",
-                userSelect: "none",
-              }}
-            >
-              {npc.agent.name}
-            </div>
-          );
-        })}
+          {/* Agent list */}
+          <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+            {agents.map((agent) => {
+              const isSelected = selectedAgentId === agent.id;
+              const isHovered = hoveredSidebarId === agent.id;
+              return (
+                <div
+                  key={agent.id}
+                  onClick={() => onEditAgent(agent)}
+                  onMouseEnter={() => setHoveredSidebarId(agent.id)}
+                  onMouseLeave={() => setHoveredSidebarId(null)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "6px 12px",
+                    cursor: "pointer",
+                    background: isHovered ? "#1A1A1A" : "transparent",
+                    borderLeft: isSelected ? `2px solid ${C_ACCENT}` : "2px solid transparent",
+                  }}
+                >
+                  {/* Color dot */}
+                  <div style={{
+                    width: 6, height: 6, minWidth: 6, borderRadius: "50%",
+                    background: agent.color || C_ACCENT,
+                  }} />
+                  {/* Name + model */}
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    <div style={{
+                      color: C_TEXT, fontSize: 11, fontWeight: 600, fontFamily: FONT,
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}>{agent.name}</div>
+                    <div style={{
+                      color: C_DIMMER, fontSize: 9, fontFamily: FONT,
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}>{agent.model}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Create agent button at bottom */}
+          <div
+            onClick={onCreateAgent}
+            onMouseEnter={() => setHoveredSidebarId("__create__")}
+            onMouseLeave={() => setHoveredSidebarId(null)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "10px 12px",
+              cursor: "pointer",
+              borderTop: `1px solid ${C_BORDER}`,
+              background: hoveredSidebarId === "__create__" ? "#1A1A1A" : "transparent",
+            }}
+          >
+            <span style={{ color: C_DIMMER, fontSize: 12 }}>+</span>
+            <span style={{ color: C_DIMMER, fontSize: 11, fontFamily: FONT }}>create agent</span>
+          </div>
+        </div>
+
+        {/* Office area */}
+        <div
+          onClick={handleContainerClick}
+          data-dismiss-popup="true"
+          style={{
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+            overflow: "hidden", position: "relative",
+          }}
+        >
+          <div style={{ position: "relative" }}>
+            <canvas
+              ref={canvasRef}
+              width={CANVAS_W}
+              height={CANVAS_H}
+              onClick={handleCanvasClick}
+              style={{ display: "block", width: CANVAS_W, height: CANVAS_H, cursor: "pointer" }}
+            />
+
+            {/* Agent info popup */}
+            {popup && (() => {
+              // Position popup near click, but keep it within canvas bounds
+              let popupX = popup.x + 10;
+              let popupY = popup.y - 10;
+              const popupW = 180;
+              const popupH = 90;
+              if (popupX + popupW > CANVAS_W) popupX = popup.x - popupW - 10;
+              if (popupY + popupH > CANVAS_H) popupY = CANVAS_H - popupH - 4;
+              if (popupY < 0) popupY = 4;
+
+              return (
+                <div
+                  onClick={(e) => { e.stopPropagation(); onEditAgent(popup.agent); setPopup(null); }}
+                  style={{
+                    position: "absolute",
+                    left: popupX,
+                    top: popupY,
+                    width: popupW,
+                    background: "#1A1A1A",
+                    border: `1px solid ${C_BORDER}`,
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                    zIndex: 10,
+                    fontFamily: FONT,
+                  }}
+                >
+                  <div style={{
+                    color: popup.agent.color || C_TEXT, fontSize: 12, fontWeight: 700,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    marginBottom: 4,
+                  }}>{popup.agent.name}</div>
+                  <div style={{
+                    color: C_DIM, fontSize: 10,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    marginBottom: 2,
+                  }}>{popup.agent.role || "no role"}</div>
+                  <div style={{
+                    color: C_DIMMER, fontSize: 9,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    marginBottom: 6,
+                  }}>{popup.agent.goal || "no goal"}</div>
+                  <div style={{
+                    color: C_DIMMER, fontSize: 8, fontStyle: "italic",
+                  }}>click to edit</div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
       </div>
     </div>
   );

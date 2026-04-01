@@ -421,13 +421,15 @@ func (s *jobManagerService) executeClaudeJob(job *entity.Job, run *entity.JobRun
 		cliArgs = append(cliArgs, "--model", job.Model)
 	}
 
-	// If job has an agent, build system prompt and inject agent configuration
+	// If job has an agent, build system prompt and pass via env var to avoid shell escaping issues.
+	// The --system-prompt flag references $QUANT_AGENT_SYSTEM_PROMPT which preserves newlines.
+	var agentSystemPrompt string
 	if job.AgentID != "" && s.findAgent != nil {
 		agent, agentErr := s.findAgent.FindAgentByID(job.AgentID)
 		if agentErr == nil && agent != nil {
-			systemPrompt := buildAgentSystemPrompt(agent)
-			if systemPrompt != "" {
-				cliArgs = append(cliArgs, "--system-prompt", systemPrompt)
+			agentSystemPrompt = buildAgentSystemPrompt(agent)
+			if agentSystemPrompt != "" {
+				cliArgs = append(cliArgs, "--system-prompt", "$QUANT_AGENT_SYSTEM_PROMPT")
 			}
 			// Use agent's model as fallback if job doesn't specify one
 			if (job.Model == "" || job.Model == "cli default") && agent.Model != "" {
@@ -473,6 +475,11 @@ func (s *jobManagerService) executeClaudeJob(job *entity.Job, run *entity.JobRun
 	cmd := exec.Command(shell, "-l", "-c", fullCmd)
 	cmd.Dir = dir
 	cmd.Env = append(shellEnv(), "TERM=dumb")
+
+	// Inject agent system prompt as env var (avoids shell escaping issues with newlines)
+	if agentSystemPrompt != "" {
+		cmd.Env = append(cmd.Env, "QUANT_AGENT_SYSTEM_PROMPT="+agentSystemPrompt)
+	}
 
 	// Inject agent env vars into subprocess
 	if job.AgentID != "" && s.findAgent != nil {
