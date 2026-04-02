@@ -277,6 +277,10 @@ export function runJob(id: string): Promise<JobRun> {
   return callGo(PKG, JOB_CTRL, "RunJob", id);
 }
 
+export function rerunJob(jobId: string, originalRunId: string): Promise<JobRun> {
+  return callGo(PKG, JOB_CTRL, "RerunJob", jobId, originalRunId);
+}
+
 export function cancelRun(runId: string): Promise<void> {
   return callGo(PKG, JOB_CTRL, "CancelRun", runId);
 }

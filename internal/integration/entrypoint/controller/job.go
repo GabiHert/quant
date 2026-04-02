@@ -158,6 +158,15 @@ func (c *jobController) RunJob(id string) (*dto.JobRunResponse, error) {
 	return dto.JobRunResponseFromEntityPtr(run), nil
 }
 
+// RerunJob creates a new run for a job, preserving trigger context from a previous run.
+func (c *jobController) RerunJob(jobID string, originalRunID string) (*dto.JobRunResponse, error) {
+	run, err := c.jobManager.RerunJob(jobID, originalRunID)
+	if err != nil {
+		return nil, err
+	}
+	return dto.JobRunResponseFromEntityPtr(run), nil
+}
+
 // CancelRun cancels a running job run.
 func (c *jobController) CancelRun(runID string) error {
 	return c.jobManager.CancelRun(runID)

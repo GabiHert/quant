@@ -1188,7 +1188,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
                         e.stopPropagation();
                         if (!selectedJobId) return;
                         try {
-                          const newRun = await api.runJob(selectedJobId);
+                          const newRun = await api.rerunJob(selectedJobId, run.id);
                           await fetchRuns(selectedJobId);
                           setSelectedRunId(newRun.id);
                           setSelectedRunTab("session");

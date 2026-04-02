@@ -243,6 +243,22 @@ The Quant canvas UI shows running jobs with a pulsing green border and highlight
 		s.handleRunJob,
 	)
 
+	// 6b. rerun_job
+	mcpServer.AddTool(
+		mcp.NewTool("rerun_job",
+			mcp.WithDescription(`Rerun a job preserving the trigger context from a previous run.
+
+When a job was originally triggered by an upstream job, this recreates the same trigger context (metadata or output from the parent run) so the rerun receives the same input as the original.
+
+If the original run was manual (no triggeredBy), this behaves identically to run_job.
+
+Use this instead of run_job when you want to retry a specific run with the same input it originally received.`),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Job ID to rerun (get from list_jobs)")),
+			mcp.WithString("originalRunId", mcp.Required(), mcp.Description("Run ID of the original run to replay trigger context from (get from list_runs)")),
+		),
+		s.handleRerunJob,
+	)
+
 	// 7. get_run
 	mcpServer.AddTool(
 		mcp.NewTool("get_run",
@@ -758,6 +774,25 @@ func (s *QuantMCPServer) handleRunJob(_ context.Context, request mcp.CallToolReq
 	}
 
 	run, err := s.jobManager.RunJob(id, "")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return marshalResult(runToMap(run))
+}
+
+func (s *QuantMCPServer) handleRerunJob(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, err := requiredString(request, "id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	originalRunID, err := requiredString(request, "originalRunId")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	run, err := s.jobManager.RerunJob(id, originalRunID)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

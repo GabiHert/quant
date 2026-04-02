@@ -228,6 +228,78 @@ func (s *jobManagerService) RunJob(jobID string, triggeredByRunID string) (*enti
 	return &run, nil
 }
 
+// RerunJob creates a new run for a job, preserving the trigger context from a previous run.
+// It looks up the original run's triggeredBy parent and rebuilds the same context injection.
+func (s *jobManagerService) RerunJob(jobID string, originalRunID string) (*entity.JobRun, error) {
+	// Look up the original run to get its triggeredBy
+	originalRun, err := s.findJobRun.FindJobRunByID(originalRunID)
+	if err != nil || originalRun == nil {
+		// Fallback: run without trigger context
+		return s.RunJob(jobID, "")
+	}
+
+	parentRunID := originalRun.TriggeredBy
+	if parentRunID == "" {
+		// Original was manual, just run fresh
+		return s.RunJob(jobID, "")
+	}
+
+	// Rebuild trigger context from the parent run
+	parentRun, err := s.findJobRun.FindJobRunByID(parentRunID)
+	if err != nil || parentRun == nil {
+		return s.RunJob(jobID, "")
+	}
+
+	parentJob, _ := s.findJob.FindJobByID(parentRun.JobID)
+	parentJobName := parentRun.JobID
+	if parentJob != nil {
+		parentJobName = parentJob.Name
+	}
+
+	sourceOutput := parentRun.Result
+	metadataSection := ""
+	if idx := strings.Index(sourceOutput, "\n\n--- metadata ---\n"); idx >= 0 {
+		metadataSection = sourceOutput[idx+len("\n\n--- metadata ---\n"):]
+		sourceOutput = sourceOutput[:idx]
+	}
+	if len(sourceOutput) > 3000 {
+		sourceOutput = sourceOutput[len(sourceOutput)-3000:]
+	}
+
+	triggerOn := "success"
+	if parentRun.Status == jobrunstatus.Failed {
+		triggerOn = "failure"
+	}
+
+	var ctx string
+	if metadataSection != "" {
+		ctx = fmt.Sprintf(
+			"## Trigger context\n"+
+				"This job was triggered by the %s of job \"%s\" (run: %s).\n"+
+				"\n### Structured metadata from \"%s\":\n```json\n%s\n```\n",
+			triggerOn, parentJobName, parentRun.ID, parentJobName, metadataSection,
+		)
+	} else {
+		ctx = fmt.Sprintf(
+			"## Trigger context\n"+
+				"This job was triggered by the %s of job \"%s\" (run: %s).\n"+
+				"\n### Output from \"%s\":\n```\n%s\n```\n",
+			triggerOn, parentJobName, parentRun.ID, parentJobName, sourceOutput,
+		)
+	}
+
+	newRun, err := s.RunJob(jobID, parentRunID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	s.triggerCtx[newRun.ID] = ctx
+	s.mu.Unlock()
+
+	return newRun, nil
+}
+
 // executeWithRetries runs the job, retrying on failure up to MaxRetries.
 // For Claude jobs, each retry includes the previous attempt's output so Claude can pick up.
 func (s *jobManagerService) executeWithRetries(job *entity.Job, run *entity.JobRun) {
