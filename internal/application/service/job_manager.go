@@ -432,7 +432,7 @@ func (s *jobManagerService) executeClaudeJob(job *entity.Job, run *entity.JobRun
 				cliArgs = append(cliArgs, "--system-prompt", "$QUANT_AGENT_SYSTEM_PROMPT")
 			}
 			// Use agent's model as fallback if job doesn't specify one
-			if (job.Model == "" || job.Model == "cli default") && agent.Model != "" {
+			if (job.Model == "" || job.Model == "cli default") && agent.Model != "" && agent.Model != "cli default" {
 				cliArgs = append(cliArgs, "--model", agent.Model)
 			}
 		}
