@@ -42,6 +42,10 @@ export function OnStartup(arg1) {
   return window['go']['controller']['jobController']['OnStartup'](arg1);
 }
 
+export function RerunJob(arg1, arg2) {
+  return window['go']['controller']['jobController']['RerunJob'](arg1, arg2);
+}
+
 export function RunJob(arg1) {
   return window['go']['controller']['jobController']['RunJob'](arg1);
 }

@@ -23,6 +23,8 @@ export function OnShutdown(arg1:context.Context):Promise<void>;
 
 export function OnStartup(arg1:context.Context):Promise<void>;
 
+export function RerunJob(arg1:string,arg2:string):Promise<dto.JobRunResponse>;
+
 export function RunJob(arg1:string):Promise<dto.JobRunResponse>;
 
 export function UpdateJob(arg1:dto.UpdateJobRequest):Promise<dto.JobResponse>;
