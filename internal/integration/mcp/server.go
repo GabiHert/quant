@@ -66,15 +66,25 @@ func (s *QuantMCPServer) registerTools(mcpServer *server.MCPServer) {
 		mcp.NewTool("list_jobs",
 			mcp.WithDescription(`List all configured jobs with their full configuration.
 
-Each job may have an agentId linking to an agent persona. When a job runs, the agent's configuration (role, goal, boundaries, skills) is injected as a system prompt into the Claude CLI session. The agent also provides env vars and a fallback model. Use get_agent(agentId) to see the full agent config.
+Returns an array of job objects. Each job may have an agentId linking to an agent persona. When a job runs, the agent's configuration (role, goal, boundaries, skills) is injected as a system prompt into the Claude CLI session. The agent also provides env vars and a fallback model. Use get_agent(agentId) to see the full agent config.
 
 Key fields in the response:
-- agentId: UUID of the assigned agent (empty = no agent). The agent defines WHO executes the job (persona, rules, skills). Use get_agent to see details.
+- id: UUID — use this to reference the job in run_job, update_job, delete_job, list_runs
+- name: human-readable name shown in the canvas UI
+- type: 'claude' (Claude CLI session) or 'bash' (shell script)
+- agentId: UUID of the assigned agent (empty = no agent). The agent defines WHO executes the job (persona, rules, skills). Use get_agent to see details
 - agentName/agentRole: inline summary of the assigned agent (empty if no agent)
 - claudeCommand: which Claude CLI binary/alias to invoke (e.g. 'claude', 'claude-bl')
 - prompt: the task instructions sent to Claude (what to do)
 - successPrompt/failurePrompt: evaluation criteria run after the main task to determine success/failure
-- metadataPrompt: instructions for extracting structured data passed to triggered downstream jobs`),
+- metadataPrompt: instructions for extracting structured data passed to triggered downstream jobs
+- scheduleEnabled: whether the job runs on a schedule (cron or interval)
+- onSuccess/onFailure: trigger chains — downstream job IDs that fire when this job completes
+- envVariables: key-value env vars injected at runtime (secrets, tokens, config)
+- overrideRepoCommand: custom repo command override for the Claude CLI (advanced)
+- workingDirectory: the directory where the job executes (supports ~/path)
+
+Use this as the starting point to discover job IDs before calling run_job, update_job, or list_runs.`),
 		),
 		s.handleListJobs,
 	)
@@ -82,8 +92,12 @@ Key fields in the response:
 	// 2. get_job
 	mcpServer.AddTool(
 		mcp.NewTool("get_job",
-			mcp.WithDescription("Get a job by ID with full configuration. If the job has an agentId, the response includes agentName and agentRole inline. Use get_agent(agentId) for the full agent config (boundaries, skills, env vars)."),
-			mcp.WithString("id", mcp.Required(), mcp.Description("Job ID")),
+			mcp.WithDescription(`Get a job by ID with full configuration. Returns a single job object with all fields.
+
+If the job has an agentId, the response includes agentName and agentRole inline for quick reference. Use get_agent(agentId) for the full agent config (boundaries, skills, env vars, MCP servers).
+
+Use this to inspect a job's prompt, schedule, triggers, and agent assignment before running or modifying it.`),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Job ID (get from list_jobs)")),
 		),
 		s.handleGetJob,
 	)
@@ -93,9 +107,9 @@ Key fields in the response:
 		mcp.NewTool("create_job",
 			mcp.WithDescription(`Create a new automated job in Quant. Jobs can be:
 - 'claude' type: runs a Claude CLI session with a prompt (use for code reviews, analysis, complex tasks)
-- 'bash' type: runs a shell script (use for health checks, deployments, notifications)
+- 'bash' type: runs a shell script (use for health checks, deployments, notifications, data pipelines)
 
-Jobs run autonomously with permissions bypassed. After creating, use update_job to wire trigger chains (onSuccess/onFailure arrays with target job IDs).
+Jobs run autonomously with permissions bypassed by default. After creating, use update_job to wire trigger chains (onSuccess/onFailure arrays with target job IDs).
 
 Trigger chains: when a job finishes, it can trigger other jobs based on the outcome. Use onSuccess/onFailure to build pipelines like: health-check → deploy (on success) → notify (on deploy success), health-check → incident-report (on failure).
 
@@ -108,32 +122,40 @@ The Quant canvas UI auto-refreshes every 10 seconds and auto-layouts new jobs th
 Workflow for building pipelines:
 1. Create all jobs first (they appear on canvas automatically)
 2. Wire triggers with update_job onSuccess/onFailure
-3. Use run_job to test the entry point — downstream jobs fire automatically`),
-			mcp.WithString("name", mcp.Required(), mcp.Description("Unique job name (e.g. health-check, deploy-staging, code-review-bot)")),
-			mcp.WithString("description", mcp.Description("What the job does — shown in the canvas UI")),
+3. Use run_job to test the entry point — downstream jobs fire automatically
+
+Returns the created job object with the generated ID. Use this ID for run_job, update_job, list_runs, etc.`),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Unique job name (e.g. health-check, deploy-staging, code-review-bot). Shown on canvas nodes")),
+			mcp.WithString("description", mcp.Description("What the job does — shown in the canvas UI tooltip and job details")),
 			mcp.WithString("type", mcp.Required(), mcp.Description("'claude' for Claude CLI sessions, 'bash' for shell scripts")),
-			mcp.WithString("workingDirectory", mcp.Description("Working directory (supports ~/path). Leave empty for home dir")),
+			mcp.WithString("workingDirectory", mcp.Description("Working directory (supports ~/path). Leave empty for home dir. This is where Claude or the script runs")),
 			// Schedule
-			mcp.WithBoolean("scheduleEnabled", mcp.Description("Enable scheduled execution. False = manual/trigger only")),
-			mcp.WithString("scheduleType", mcp.Description("'recurring' (repeats on interval/cron) or 'one_time' (runs once then auto-disables)")),
-			mcp.WithString("cronExpression", mcp.Description("Cron expression (e.g. '0 9 * * 1-5' for weekdays 9am). Alternative to scheduleInterval")),
-			mcp.WithNumber("scheduleInterval", mcp.Description("Repeat interval in minutes (e.g. 30 for every 30min). Alternative to cronExpression")),
-			mcp.WithNumber("timeoutSeconds", mcp.Description("Max execution time in seconds. Claude jobs: use 600 (10 min, safe default). Bash jobs: 60-120s. Never set below 60. Job is killed after this")),
+			mcp.WithBoolean("scheduleEnabled", mcp.Description("Enable scheduled execution. False = manual/trigger only. Default: false")),
+			mcp.WithString("scheduleType", mcp.Description("'recurring' (repeats on interval/cron) or 'one_time' (runs once then auto-disables). Default: 'recurring'")),
+			mcp.WithString("cronExpression", mcp.Description("Cron expression (e.g. '0 9 * * 1-5' for weekdays 9am, '*/30 * * * *' for every 30 min). Alternative to scheduleInterval. Standard 5-field cron format")),
+			mcp.WithNumber("scheduleInterval", mcp.Description("Repeat interval in minutes (e.g. 30 for every 30min). Alternative to cronExpression. Simpler but less flexible")),
+			mcp.WithNumber("timeoutSeconds", mcp.Description("Max execution time in seconds. Claude jobs: use 600 (10 min, safe default). Bash jobs: 60-120s. Minimum 60. Job process is killed after this")),
 			// Claude config
-			mcp.WithString("prompt", mcp.Description("Main task prompt for claude jobs. Be specific about what to do and what tools to use")),
-			mcp.WithNumber("maxRetries", mcp.Description("Retry count on failure (claude only). Each retry includes previous output as context")),
-			mcp.WithString("model", mcp.Description("Claude model (e.g. 'claude-sonnet-4-6'). Empty = CLI default")),
-			mcp.WithString("claudeCommand", mcp.Description("Claude CLI command/alias (e.g. 'claude', 'claude-bl'). Supports shell aliases from ~/.zshrc")),
-			mcp.WithString("agentId", mcp.Description("Agent ID to use for this job. The agent's role, goal, boundaries, and skills are injected as a system prompt. Use list_agents to get IDs")),
-			mcp.WithString("successPrompt", mcp.Description("How to evaluate success (max 300 chars). E.g. 'All tests passed and PR was approved'. Optional")),
-			mcp.WithString("failurePrompt", mcp.Description("How to evaluate failure (max 300 chars). E.g. 'Tests failed or errors occurred'. Optional")),
-			mcp.WithString("metadataPrompt", mcp.Description("What structured data to extract for triggered jobs (max 500 chars). E.g. 'Extract PR URLs, test counts, error details'. Saves tokens vs raw output")),
+			mcp.WithString("prompt", mcp.Description("Main task prompt for claude jobs. Be specific about what to do, which files to read, which tools to use, and what output format to produce. This is piped to Claude via stdin with -p flag")),
+			mcp.WithNumber("maxRetries", mcp.Description("Retry count on failure (claude only). Each retry includes the previous attempt's output as context so Claude can learn from errors. Default: 0")),
+			mcp.WithString("model", mcp.Description("Claude model (e.g. 'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'). Empty = CLI default. Agent model is used as fallback if set")),
+			mcp.WithString("claudeCommand", mcp.Description("Claude CLI command/alias (e.g. 'claude', 'claude-bl'). Supports shell aliases from ~/.zshrc. Default: 'claude'")),
+			mcp.WithString("agentId", mcp.Description("Agent ID to use for this job. The agent's role, goal, boundaries, skills, MCP servers, and env vars are injected as a system prompt. Use list_agents to get IDs")),
+			mcp.WithString("overrideRepoCommand", mcp.Description("Custom repo command override for Claude CLI (advanced). Overrides the default command used to interact with the repository")),
+			mcp.WithString("successPrompt", mcp.Description("How to evaluate success after the main task completes (max 300 chars). E.g. 'All tests passed and PR was created'. Claude runs a second evaluation call using this. Optional — if omitted, exit code determines success")),
+			mcp.WithString("failurePrompt", mcp.Description("How to evaluate failure after the main task completes (max 300 chars). E.g. 'Tests failed, build errors, or no PR created'. Used in the evaluation call. Optional")),
+			mcp.WithString("metadataPrompt", mcp.Description("What structured data to extract for triggered downstream jobs (max 500 chars). E.g. 'Extract PR URL, test count, error summary as JSON'. This metadata is passed as context to downstream triggered jobs, saving tokens vs passing raw output. Optional")),
 			// Bash config
-			mcp.WithString("interpreter", mcp.Description("Shell for bash jobs: '/bin/bash', '/bin/zsh', 'python3'")),
-			mcp.WithString("scriptContent", mcp.Description("Script content for bash jobs. Exit 0 = success (fires onSuccess triggers), non-zero = failure (fires onFailure triggers)")),
+			mcp.WithString("interpreter", mcp.Description("Shell interpreter for bash jobs: '/bin/bash' (default), '/bin/zsh', 'python3', 'node', etc. The scriptContent is piped to this via stdin")),
+			mcp.WithString("scriptContent", mcp.Description("Script content for bash jobs. Piped to the interpreter via stdin. Exit 0 = success (fires onSuccess triggers), non-zero = failure (fires onFailure triggers). Stdout/stderr are captured as run output")),
+			// Environment
+			mcp.WithString("envVariables", mcp.Description("JSON object of environment variables injected at runtime. E.g. '{\"API_KEY\":\"xxx\",\"ENV\":\"prod\"}'. For claude jobs, these are set before the CLI runs. For bash jobs, available in the script. Agent env vars are merged (job takes precedence)")),
 			// Triggers
-			mcp.WithString("onSuccess", mcp.Description("JSON array of job IDs to trigger on success. E.g. '[\"job-id-1\",\"job-id-2\"]'. Use list_jobs to get IDs")),
-			mcp.WithString("onFailure", mcp.Description("JSON array of job IDs to trigger on failure. E.g. '[\"job-id-1\"]'. Use list_jobs to get IDs")),
+			mcp.WithString("onSuccess", mcp.Description("JSON array of job IDs to trigger on success. E.g. '[\"job-id-1\",\"job-id-2\"]'. All listed jobs run in parallel. Use list_jobs to get IDs")),
+			mcp.WithString("onFailure", mcp.Description("JSON array of job IDs to trigger on failure. E.g. '[\"job-id-1\"]'. All listed jobs run in parallel. Use list_jobs to get IDs")),
+			// Flags
+			mcp.WithBoolean("allowBypass", mcp.Description("Allow --dangerously-skip-permissions flag for claude jobs. Default: true. Set to false to require manual permission grants during execution")),
+			mcp.WithBoolean("autonomousMode", mcp.Description("Run in autonomous mode without stopping to ask the user. Default: true. Set to false for interactive jobs that need human approval")),
 		),
 		s.handleCreateJob,
 	)
@@ -141,35 +163,45 @@ Workflow for building pipelines:
 	// 4. update_job
 	mcpServer.AddTool(
 		mcp.NewTool("update_job",
-			mcp.WithDescription(`Update a job's configuration. Only provided fields are changed. Also use this to wire trigger chains by setting onSuccess/onFailure with arrays of target job IDs.
+			mcp.WithDescription(`Update a job's configuration. Only provided fields are changed — omitted fields keep their current values. Also use this to wire trigger chains by setting onSuccess/onFailure with arrays of target job IDs.
+
+Returns the full updated job object.
 
 Common workflows:
-- Wire triggers: update_job(id, onSuccess=["target-job-id"])
+- Wire triggers: update_job(id, onSuccess='["target-job-id"]')
 - Change prompt: update_job(id, prompt="new prompt")
 - Enable schedule: update_job(id, scheduleEnabled=true, scheduleInterval=30)
-- Add evaluation: update_job(id, successPrompt="...", failurePrompt="...")`),
+- Add evaluation: update_job(id, successPrompt="...", failurePrompt="...")
+- Assign agent: update_job(id, agentId="agent-uuid")
+- Unassign agent: update_job(id, agentId="")
+- Add env vars: update_job(id, envVariables='{"KEY":"value"}')
+- Disable bypass: update_job(id, allowBypass=false)`),
 			mcp.WithString("id", mcp.Required(), mcp.Description("Job ID to update (get from list_jobs)")),
 			mcp.WithString("name", mcp.Description("Job name")),
 			mcp.WithString("description", mcp.Description("Job description")),
 			mcp.WithString("type", mcp.Description("'claude' or 'bash'")),
-			mcp.WithString("workingDirectory", mcp.Description("Working directory")),
-			mcp.WithBoolean("scheduleEnabled", mcp.Description("Enable/disable schedule")),
+			mcp.WithString("workingDirectory", mcp.Description("Working directory (supports ~/path)")),
+			mcp.WithBoolean("scheduleEnabled", mcp.Description("Enable/disable scheduled execution")),
 			mcp.WithString("scheduleType", mcp.Description("'recurring' or 'one_time'")),
-			mcp.WithString("cronExpression", mcp.Description("Cron expression")),
+			mcp.WithString("cronExpression", mcp.Description("Cron expression (5-field format)")),
 			mcp.WithNumber("scheduleInterval", mcp.Description("Interval in minutes")),
-			mcp.WithNumber("timeoutSeconds", mcp.Description("Timeout in seconds")),
-			mcp.WithString("prompt", mcp.Description("Task prompt (claude jobs)")),
-			mcp.WithNumber("maxRetries", mcp.Description("Retry count (claude jobs)")),
-			mcp.WithString("model", mcp.Description("Claude model")),
+			mcp.WithNumber("timeoutSeconds", mcp.Description("Timeout in seconds (min 60)")),
+			mcp.WithString("prompt", mcp.Description("Task prompt for claude jobs")),
+			mcp.WithNumber("maxRetries", mcp.Description("Retry count on failure (claude jobs)")),
+			mcp.WithString("model", mcp.Description("Claude model (e.g. 'claude-sonnet-4-6')")),
 			mcp.WithString("claudeCommand", mcp.Description("Claude CLI command/alias")),
 			mcp.WithString("agentId", mcp.Description("Agent ID. Use list_agents to get IDs. Set to empty string to unassign")),
+			mcp.WithString("overrideRepoCommand", mcp.Description("Custom repo command override (advanced)")),
 			mcp.WithString("successPrompt", mcp.Description("Success evaluation criteria (max 300 chars)")),
 			mcp.WithString("failurePrompt", mcp.Description("Failure evaluation criteria (max 300 chars)")),
 			mcp.WithString("metadataPrompt", mcp.Description("Metadata extraction instructions (max 500 chars)")),
-			mcp.WithString("interpreter", mcp.Description("Script interpreter (bash jobs)")),
-			mcp.WithString("scriptContent", mcp.Description("Script content (bash jobs)")),
+			mcp.WithString("interpreter", mcp.Description("Script interpreter for bash jobs")),
+			mcp.WithString("scriptContent", mcp.Description("Script content for bash jobs")),
+			mcp.WithString("envVariables", mcp.Description("JSON object of env vars. E.g. '{\"KEY\":\"value\"}'. Replaces existing env vars")),
 			mcp.WithString("onSuccess", mcp.Description("JSON array of job IDs to trigger on success. E.g. '[\"id1\",\"id2\"]'. Replaces existing triggers")),
 			mcp.WithString("onFailure", mcp.Description("JSON array of job IDs to trigger on failure. E.g. '[\"id1\"]'. Replaces existing triggers")),
+			mcp.WithBoolean("allowBypass", mcp.Description("Allow --dangerously-skip-permissions for claude jobs")),
+			mcp.WithBoolean("autonomousMode", mcp.Description("Run without stopping to ask the user")),
 		),
 		s.handleUpdateJob,
 	)
@@ -177,7 +209,14 @@ Common workflows:
 	// 5. delete_job
 	mcpServer.AddTool(
 		mcp.NewTool("delete_job",
-			mcp.WithDescription("Delete a job and all its trigger chains and run history. This is irreversible."),
+			mcp.WithDescription(`Delete a job and all its trigger chains and run history. This is irreversible.
+
+Deleting a job also removes:
+- All trigger connections TO and FROM this job (other jobs' onSuccess/onFailure entries referencing this job are cleaned up)
+- All run records and their output logs
+- The job's position on the canvas
+
+Returns a confirmation message. Use list_jobs to verify deletion.`),
 			mcp.WithString("id", mcp.Required(), mcp.Description("Job ID to delete (get from list_jobs)")),
 		),
 		s.handleDeleteJob,
@@ -186,7 +225,19 @@ Common workflows:
 	// 6. run_job
 	mcpServer.AddTool(
 		mcp.NewTool("run_job",
-			mcp.WithDescription("Trigger a job to run immediately. Returns the run object with a run ID. The job executes asynchronously — use list_runs or get_run to check status. If the job has trigger chains, downstream jobs will fire automatically when this run completes."),
+			mcp.WithDescription(`Trigger a job to run immediately. Returns the run object with a run ID and initial status 'pending'.
+
+The job executes asynchronously in a background goroutine:
+1. Status transitions: pending → running → success/failed/timed_out
+2. If the job has onSuccess/onFailure trigger chains, downstream jobs fire automatically when this run completes
+3. For claude jobs with maxRetries > 0, failed runs are automatically retried with the previous output as context
+
+To monitor execution:
+- get_run(runId) — check status, duration, tokens used
+- get_run_output(runId) — get the live output (updates while running, polled every few seconds)
+- get_pipeline_status(runId) — trace the full cascade of triggered downstream jobs
+
+The Quant canvas UI shows running jobs with a pulsing green border and highlights the active pipeline path in real-time.`),
 			mcp.WithString("id", mcp.Required(), mcp.Description("Job ID to run (get from list_jobs)")),
 		),
 		s.handleRunJob,
@@ -195,7 +246,23 @@ Common workflows:
 	// 7. get_run
 	mcpServer.AddTool(
 		mcp.NewTool("get_run",
-			mcp.WithDescription("Get details of a specific job run including status (pending/running/success/failed/cancelled), duration, tokens used, and result. Use after run_job to check if execution completed."),
+			mcp.WithDescription(`Get details of a specific job run.
+
+Returns a run object with:
+- id: unique run ID
+- jobId: which job this run belongs to
+- status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'timed_out'
+- triggeredBy: run ID of the upstream job that triggered this run (empty if manual)
+- sessionId: Claude session ID (for claude-type jobs — can be used to view the session)
+- modelUsed: which Claude model actually executed (extracted from stream output)
+- durationMs: execution time in milliseconds
+- tokensUsed: total tokens consumed (input + output, claude jobs only)
+- result: the evaluation result text (if successPrompt/failurePrompt configured)
+- errorMessage: error details if the run failed
+- startedAt: ISO timestamp when execution began
+- finishedAt: ISO timestamp when execution completed (null while running)
+
+Use after run_job to check if execution completed, or to inspect historical run details.`),
 			mcp.WithString("runId", mcp.Required(), mcp.Description("Run ID (returned by run_job or list_runs)")),
 		),
 		s.handleGetRun,
@@ -204,7 +271,15 @@ Common workflows:
 	// 8. list_runs
 	mcpServer.AddTool(
 		mcp.NewTool("list_runs",
-			mcp.WithDescription("List all runs for a job, sorted by most recent first. Shows run ID, status, duration, tokens used, and whether it was triggered by another job. Use to check job history and find specific run IDs."),
+			mcp.WithDescription(`List all runs for a job, sorted by most recent first. Returns an array of run objects.
+
+Each run includes: id, status, triggeredBy, sessionId, modelUsed, durationMs, tokensUsed, result, errorMessage, startedAt, finishedAt.
+
+Use to:
+- Check job execution history and recent status
+- Find specific run IDs for get_run_output or get_pipeline_status
+- See which runs were triggered by upstream jobs (triggeredBy field contains the parent run ID)
+- Monitor how many tokens jobs are consuming over time`),
 			mcp.WithString("jobId", mcp.Required(), mcp.Description("Job ID (get from list_jobs)")),
 		),
 		s.handleListRuns,
@@ -213,7 +288,17 @@ Common workflows:
 	// 9. get_run_output
 	mcpServer.AddTool(
 		mcp.NewTool("get_run_output",
-			mcp.WithDescription("Get the full output/logs of a job run. For claude jobs this includes the Claude session output. For bash jobs this includes stdout/stderr. Also includes evaluation results and extracted metadata if configured."),
+			mcp.WithDescription(`Get the full output/logs of a job run. Returns raw text.
+
+For claude jobs: the full Claude CLI session output including all tool calls, reasoning, and final response. While running, output updates incrementally (poll to see progress).
+
+For bash jobs: combined stdout/stderr output from the script execution.
+
+Also includes (appended at the end):
+- Evaluation results: if successPrompt/failurePrompt were configured, the evaluation outcome
+- Extracted metadata: if metadataPrompt was configured, the structured data that was passed to downstream triggered jobs
+
+This can return large amounts of text for long-running jobs. Use get_run first to check status before fetching output.`),
 			mcp.WithString("runId", mcp.Required(), mcp.Description("Run ID (from list_runs or run_job)")),
 		),
 		s.handleGetRunOutput,
@@ -222,8 +307,16 @@ Common workflows:
 	// 10. cancel_run
 	mcpServer.AddTool(
 		mcp.NewTool("cancel_run",
-			mcp.WithDescription("Cancel a currently running job. Kills the process immediately. The run status is set to 'cancelled' and no triggers are fired."),
-			mcp.WithString("runId", mcp.Required(), mcp.Description("Run ID to cancel")),
+			mcp.WithDescription(`Cancel a currently running job. Kills the process immediately (SIGKILL).
+
+Effects:
+- Run status is set to 'cancelled'
+- No onSuccess/onFailure triggers are fired (the pipeline stops here)
+- Duration is recorded up to the cancellation point
+- Any partial output is preserved and accessible via get_run_output
+
+Only works on runs with status 'running' or 'pending'. Returns a confirmation message.`),
+			mcp.WithString("runId", mcp.Required(), mcp.Description("Run ID to cancel (from list_runs or run_job)")),
 		),
 		s.handleCancelRun,
 	)
@@ -231,7 +324,20 @@ Common workflows:
 	// 11. get_triggers
 	mcpServer.AddTool(
 		mcp.NewTool("get_triggers",
-			mcp.WithDescription("Get the full trigger graph showing how all jobs are connected. Returns each job with its onSuccess and onFailure targets, plus which jobs trigger it. Use this to understand the pipeline topology before wiring new connections."),
+			mcp.WithDescription(`Get the full trigger graph showing how all jobs are connected. Returns an array of trigger info objects.
+
+Each object contains:
+- job_id: the job's UUID
+- job_name: human-readable name
+- on_success: array of job names this job triggers on success
+- on_failure: array of job names this job triggers on failure
+- triggered_by: array of job names that can trigger this job
+
+Only includes jobs that have at least one trigger connection. Use this to:
+- Understand the pipeline topology before wiring new connections
+- Verify trigger chains are correctly configured after update_job
+- Identify entry points (jobs with no triggered_by) and terminal nodes (jobs with no on_success/on_failure)
+- Debug why a downstream job didn't fire (check the trigger graph)`),
 		),
 		s.handleGetTriggers,
 	)
@@ -243,7 +349,16 @@ Common workflows:
 	// 13. list_agents
 	mcpServer.AddTool(
 		mcp.NewTool("list_agents",
-			mcp.WithDescription("List all configured agents. Agents define identity (role, goal), access (MCP servers, env vars), boundaries (anti-prompt rules), and skills for Claude jobs. Assign an agent to a job to give it a persona and behavioral constraints."),
+			mcp.WithDescription(`List all configured agents. Returns an array of agent objects with full configuration.
+
+Agents define the persona and constraints for Claude jobs:
+- identity: name, color (for UI), role (who), goal (what to achieve)
+- access: which MCP servers and env vars the agent can use
+- boundaries: anti-prompt rules the agent must never violate
+- skills: which Claude skills (from ~/.claude/skills/) are enabled
+- model: fallback Claude model when the job doesn't specify one
+
+Assign an agent to a job with update_job(id, agentId="agent-uuid") to give the job a persona. Use this to find agent IDs.`),
 		),
 		s.handleListAgents,
 	)
@@ -251,8 +366,20 @@ Common workflows:
 	// 14. get_agent
 	mcpServer.AddTool(
 		mcp.NewTool("get_agent",
-			mcp.WithDescription("Get an agent by ID. Returns full configuration including role, goal, boundaries, skills, MCP access, and env vars."),
-			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID")),
+			mcp.WithDescription(`Get an agent by ID. Returns full configuration including:
+- id, name, color: identity and UI representation
+- role: who the agent is (identity, tone, expertise)
+- goal: what the agent should achieve (success criteria)
+- model: Claude model fallback
+- autonomousMode: whether the agent runs without stopping to ask
+- boundaries: array of hard rules the agent must never violate
+- skills: map of skill name → enabled (from ~/.claude/skills/)
+- mcpServers: map of MCP server name → enabled
+- envVariables: map of env var name → value (secrets, tokens)
+- createdAt, updatedAt: timestamps
+
+Use get_agent_system_prompt(id) to see the actual system prompt that gets injected.`),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID (get from list_agents)")),
 		),
 		s.handleGetAgent,
 	)
@@ -262,26 +389,35 @@ Common workflows:
 		mcp.NewTool("create_agent",
 			mcp.WithDescription(`Create a new agent persona for Claude jobs. Agents are task-specific — create many small focused agents, not monoliths.
 
-An agent's config is injected as a system prompt when a job runs:
-- role: who the agent is (identity, tone) — max 200 chars, be dense
-- goal: success criteria — max 200 chars
-- boundaries: hard rules the agent must never violate (e.g. "never push to main")
-- skills: which Claude skills the agent can use (from ~/.claude/skills/)
-- mcpServers: which MCP servers the agent can access
-- envVariables: private secrets only this agent knows (e.g. API tokens)
+An agent's config is injected as a system prompt when a job runs. The system prompt includes:
+- role: who the agent is (identity, tone, expertise) — max 500 chars, be semantically dense
+- goal: success criteria — max 500 chars
+- boundaries: hard rules the agent must never violate (e.g. "never push to main", "never modify production databases")
+- skills: which Claude skills the agent can use (from ~/.claude/skills/) — these provide domain-specific knowledge and patterns
+- mcpServers: which MCP servers the agent can access (e.g. database, Linear, GitHub)
+- envVariables: private secrets only this agent knows (e.g. API tokens, database URLs)
 - autonomousMode: true (default) = agent executes without stopping to ask
 
-After creating, assign to a job with update_job(id, agentId="...").`),
-			mcp.WithString("name", mcp.Required(), mcp.Description("Agent name (e.g. 'code_reviewer', 'devops_engineer')")),
-			mcp.WithString("color", mcp.Description("Hex color for UI (e.g. '#10B981'). Default: green")),
-			mcp.WithString("role", mcp.Description("Who is this agent? Identity and tone. Max 500 chars. Be semantically dense")),
-			mcp.WithString("goal", mcp.Description("What does this agent achieve? Success criteria. Max 500 chars")),
-			mcp.WithString("model", mcp.Description("Claude model (e.g. 'claude-opus-4-6'). Used as fallback when job doesn't specify")),
-			mcp.WithBoolean("autonomousMode", mcp.Description("Execute without stopping to ask. Default: true")),
-			mcp.WithString("boundaries", mcp.Description("JSON array of anti-prompt rules. E.g. '[\"never push to main\",\"never delete databases\"]'")),
-			mcp.WithString("skills", mcp.Description("JSON object of skill toggles. E.g. '{\"architecture\":true,\"bdd-testing\":true}'. Use list_available_skills to see options")),
-			mcp.WithString("mcpServers", mcp.Description("JSON object of MCP server toggles. E.g. '{\"dbhub\":true,\"linear\":false}'. Use list_available_mcp_servers to see options")),
-			mcp.WithString("envVariables", mcp.Description("JSON object of env vars. E.g. '{\"GITHUB_TOKEN\":\"ghp_xxx\"}'")),
+After creating, assign to a job with update_job(id, agentId="agent-uuid").
+
+Design tips:
+- One agent per role: "code_reviewer", "devops_engineer", "data_analyst" — not "do_everything"
+- Role should describe expertise and communication style: "Senior Go engineer focused on clean architecture. Direct, concise."
+- Goal should be measurable: "Review PR for architectural violations and security issues. Report findings in markdown."
+- Boundaries are hard stops, not suggestions: "never push to main", "never run DROP statements"
+- Skills provide patterns the agent follows: architecture rules, testing conventions, etc.
+
+Returns the created agent object with generated ID.`),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Agent name (e.g. 'code_reviewer', 'devops_engineer', 'data_analyst'). Used in job canvas UI")),
+			mcp.WithString("color", mcp.Description("Hex color for UI (e.g. '#10B981' green, '#3B82F6' blue, '#EF4444' red). Default: green")),
+			mcp.WithString("role", mcp.Description("Who is this agent? Identity, expertise, and tone. Max 500 chars. Be semantically dense. E.g. 'Senior Go engineer focused on clean architecture and DDD. Direct, concise, prefers code over explanations.'")),
+			mcp.WithString("goal", mcp.Description("What does this agent achieve? Measurable success criteria. Max 500 chars. E.g. 'Review changes for architectural violations, security issues, and test coverage. Report findings in structured markdown.'")),
+			mcp.WithString("model", mcp.Description("Claude model (e.g. 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'). Used as fallback when the job doesn't specify a model")),
+			mcp.WithBoolean("autonomousMode", mcp.Description("Execute without stopping to ask the user. Default: true. Set false for agents that should pause for human approval")),
+			mcp.WithString("boundaries", mcp.Description("JSON array of anti-prompt rules. Hard constraints the agent must never violate. E.g. '[\"never push to main\",\"never delete databases\",\"never modify files outside src/\"]'")),
+			mcp.WithString("skills", mcp.Description("JSON object of skill toggles. Skills from ~/.claude/skills/ provide domain knowledge. E.g. '{\"architecture\":true,\"bdd-testing\":true}'. Use list_available_skills to see what's available")),
+			mcp.WithString("mcpServers", mcp.Description("JSON object of MCP server toggles. Controls which external tools the agent can access. E.g. '{\"dbhub\":true,\"linear\":true,\"figma\":false}'. Use list_available_mcp_servers to see what's configured")),
+			mcp.WithString("envVariables", mcp.Description("JSON object of private env vars. Secrets injected into the agent's environment at runtime. E.g. '{\"GITHUB_TOKEN\":\"ghp_xxx\",\"DATABASE_URL\":\"postgres://...\"}'. Only this agent sees these values")),
 		),
 		s.handleCreateAgent,
 	)
@@ -289,18 +425,22 @@ After creating, assign to a job with update_job(id, agentId="...").`),
 	// 16. update_agent
 	mcpServer.AddTool(
 		mcp.NewTool("update_agent",
-			mcp.WithDescription("Update an agent's configuration. Only provided fields are changed."),
-			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID to update")),
+			mcp.WithDescription(`Update an agent's configuration. Only provided fields are changed — omitted fields keep their current values.
+
+Note: for map/array fields (boundaries, skills, mcpServers, envVariables), the provided value REPLACES the entire field. To add a single boundary, include all existing ones plus the new one.
+
+Returns the full updated agent object.`),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID to update (get from list_agents)")),
 			mcp.WithString("name", mcp.Description("Agent name")),
-			mcp.WithString("color", mcp.Description("Hex color for UI")),
-			mcp.WithString("role", mcp.Description("Role description (max 200 chars)")),
-			mcp.WithString("goal", mcp.Description("Goal description (max 200 chars)")),
-			mcp.WithString("model", mcp.Description("Claude model")),
-			mcp.WithBoolean("autonomousMode", mcp.Description("Execute without stopping")),
-			mcp.WithString("boundaries", mcp.Description("JSON array of anti-prompt rules. Replaces existing")),
-			mcp.WithString("skills", mcp.Description("JSON object of skill toggles. Replaces existing")),
-			mcp.WithString("mcpServers", mcp.Description("JSON object of MCP server toggles. Replaces existing")),
-			mcp.WithString("envVariables", mcp.Description("JSON object of env vars. Replaces existing")),
+			mcp.WithString("color", mcp.Description("Hex color for UI (e.g. '#10B981')")),
+			mcp.WithString("role", mcp.Description("Role description — who the agent is (max 500 chars)")),
+			mcp.WithString("goal", mcp.Description("Goal description — success criteria (max 500 chars)")),
+			mcp.WithString("model", mcp.Description("Claude model fallback")),
+			mcp.WithBoolean("autonomousMode", mcp.Description("Execute without stopping to ask")),
+			mcp.WithString("boundaries", mcp.Description("JSON array of anti-prompt rules. REPLACES all existing boundaries")),
+			mcp.WithString("skills", mcp.Description("JSON object of skill toggles. REPLACES all existing skills")),
+			mcp.WithString("mcpServers", mcp.Description("JSON object of MCP server toggles. REPLACES all existing MCP servers")),
+			mcp.WithString("envVariables", mcp.Description("JSON object of env vars. REPLACES all existing env vars")),
 		),
 		s.handleUpdateAgent,
 	)
@@ -308,8 +448,15 @@ After creating, assign to a job with update_job(id, agentId="...").`),
 	// 17. delete_agent
 	mcpServer.AddTool(
 		mcp.NewTool("delete_agent",
-			mcp.WithDescription("Delete an agent. Jobs using this agent will have their agentId cleared. This is irreversible."),
-			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID to delete")),
+			mcp.WithDescription(`Delete an agent permanently. This is irreversible.
+
+Side effects:
+- Jobs using this agent will have their agentId cleared (they become agent-less)
+- The agent's system prompt will no longer be injected into those jobs
+- Existing run history is preserved (historical runs still reference the agent ID)
+
+Returns a confirmation message.`),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID to delete (get from list_agents)")),
 		),
 		s.handleDeleteAgent,
 	)
@@ -317,7 +464,16 @@ After creating, assign to a job with update_job(id, agentId="...").`),
 	// 18. list_available_skills
 	mcpServer.AddTool(
 		mcp.NewTool("list_available_skills",
-			mcp.WithDescription("List all Claude skills available in ~/.claude/skills/. Returns skill names that can be used in agent skill toggles. Skills are architecture patterns, testing guidelines, coding conventions, etc."),
+			mcp.WithDescription(`List all Claude skills available in ~/.claude/skills/. Returns an array of skill name strings.
+
+Skills are markdown files or directories that provide domain-specific knowledge and patterns to Claude. Examples:
+- architecture: clean architecture patterns and layer separation rules
+- bdd-testing: BDD/Gherkin test writing conventions
+- code-review: code review checklist and standards
+
+Use these names as keys in the agent 'skills' parameter. E.g. create_agent(skills='{"architecture":true,"bdd-testing":true}').
+
+Skills are read from the filesystem at agent creation time. The agent's system prompt includes the content of all enabled skills.`),
 		),
 		s.handleListAvailableSkills,
 	)
@@ -325,7 +481,17 @@ After creating, assign to a job with update_job(id, agentId="...").`),
 	// 19. list_available_mcp_servers
 	mcpServer.AddTool(
 		mcp.NewTool("list_available_mcp_servers",
-			mcp.WithDescription("List all MCP servers configured in ~/.mcp.json. Returns server names that can be used in agent MCP server toggles."),
+			mcp.WithDescription(`List all MCP servers configured in ~/.mcp.json. Returns an array of server name strings.
+
+MCP servers provide external tool access to agents. Common examples:
+- dbhub: database querying (SQL)
+- linear: project management (issues, tasks)
+- figma: design file access
+- context7: documentation lookup
+
+Use these names as keys in the agent 'mcpServers' parameter. E.g. create_agent(mcpServers='{"dbhub":true,"linear":true}').
+
+When an agent has MCP servers enabled, the Claude CLI session is started with access to those servers' tools.`),
 		),
 		s.handleListAvailableMcpServers,
 	)
@@ -333,8 +499,22 @@ After creating, assign to a job with update_job(id, agentId="...").`),
 	// 20. get_agent_system_prompt
 	mcpServer.AddTool(
 		mcp.NewTool("get_agent_system_prompt",
-			mcp.WithDescription("Preview the system prompt that would be injected for a given agent. Useful for debugging agent behavior before running a job."),
-			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID")),
+			mcp.WithDescription(`Preview the exact system prompt that would be injected for a given agent when a job runs.
+
+The system prompt is constructed from the agent's configuration:
+- Role and goal are included as identity context
+- Boundaries are listed as hard rules
+- Enabled skills have their full markdown content injected
+- MCP server access is documented
+
+Use this to debug agent behavior:
+- Verify the system prompt reads correctly before running a job
+- Check that skills are being included properly
+- Ensure boundaries are clear and unambiguous
+- Test prompt changes after update_agent
+
+Returns the full system prompt text, or a message indicating the prompt is empty.`),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Agent ID (get from list_agents)")),
 		),
 		s.handleGetAgentSystemPrompt,
 	)
@@ -342,8 +522,24 @@ After creating, assign to a job with update_job(id, agentId="...").`),
 	// 12. get_pipeline_status
 	mcpServer.AddTool(
 		mcp.NewTool("get_pipeline_status",
-			mcp.WithDescription("Given a run ID, trace the full chain of triggered runs downstream. Shows the cascade: which jobs were triggered, their statuses, durations, and token usage. Use after run_job to see the full pipeline execution result without manually checking each job."),
-			mcp.WithString("runId", mcp.Required(), mcp.Description("The initial run ID to trace from (returned by run_job)")),
+			mcp.WithDescription(`Given a run ID, trace the full chain of triggered runs downstream using BFS. Shows the complete cascade of the pipeline execution.
+
+Returns an array of pipeline step objects, each with:
+- run_id: the run's UUID
+- job_name: human-readable name of the job
+- status: pending/running/success/failed/cancelled/timed_out
+- duration_ms: execution time in milliseconds
+- tokens_used: total tokens consumed (claude jobs only)
+- triggered_by_run: the upstream run ID that triggered this step
+- error: error message if the step failed (omitted if empty)
+
+Use after run_job to see the full pipeline execution result without manually checking each job. The first element is always the initial run, followed by downstream triggered runs in BFS order.
+
+Example flow: run_job("health-check") → get_pipeline_status(runId) shows:
+1. health-check (success, 45s, 12k tokens)
+2. deploy-staging (success, 120s, 8k tokens, triggered by health-check)
+3. notify-slack (success, 5s, 0 tokens, triggered by deploy-staging)`),
+			mcp.WithString("runId", mcp.Required(), mcp.Description("The initial run ID to trace from (returned by run_job or list_runs)")),
 		),
 		s.handleGetPipelineStatus,
 	)
@@ -389,27 +585,37 @@ func (s *QuantMCPServer) handleCreateJob(_ context.Context, request mcp.CallTool
 	args := request.GetArguments()
 
 	job := entity.Job{
-		Name:             stringArg(args, "name"),
-		Description:      stringArg(args, "description"),
-		Type:             stringArg(args, "type"),
-		WorkingDirectory: stringArg(args, "workingDirectory"),
-		ScheduleEnabled:  boolArg(args, "scheduleEnabled"),
-		ScheduleType:     stringArg(args, "scheduleType"),
-		CronExpression:   stringArg(args, "cronExpression"),
-		ScheduleInterval: intArg(args, "scheduleInterval"),
-		TimeoutSeconds:   intArg(args, "timeoutSeconds"),
-		Prompt:           stringArg(args, "prompt"),
-		AllowBypass:      true,
-		AutonomousMode:   true,
-		MaxRetries:       intArg(args, "maxRetries"),
-		Model:            stringArg(args, "model"),
-		ClaudeCommand:    stringArg(args, "claudeCommand"),
-		AgentID:          stringArg(args, "agentId"),
-		SuccessPrompt:    stringArg(args, "successPrompt"),
-		FailurePrompt:    stringArg(args, "failurePrompt"),
-		MetadataPrompt:   stringArg(args, "metadataPrompt"),
-		Interpreter:      stringArg(args, "interpreter"),
-		ScriptContent:    stringArg(args, "scriptContent"),
+		Name:                stringArg(args, "name"),
+		Description:         stringArg(args, "description"),
+		Type:                stringArg(args, "type"),
+		WorkingDirectory:    stringArg(args, "workingDirectory"),
+		ScheduleEnabled:     boolArg(args, "scheduleEnabled"),
+		ScheduleType:        stringArg(args, "scheduleType"),
+		CronExpression:      stringArg(args, "cronExpression"),
+		ScheduleInterval:    intArg(args, "scheduleInterval"),
+		TimeoutSeconds:      intArg(args, "timeoutSeconds"),
+		Prompt:              stringArg(args, "prompt"),
+		AllowBypass:         true,
+		AutonomousMode:      true,
+		MaxRetries:          intArg(args, "maxRetries"),
+		Model:               stringArg(args, "model"),
+		ClaudeCommand:       stringArg(args, "claudeCommand"),
+		AgentID:             stringArg(args, "agentId"),
+		OverrideRepoCommand: stringArg(args, "overrideRepoCommand"),
+		SuccessPrompt:       stringArg(args, "successPrompt"),
+		FailurePrompt:       stringArg(args, "failurePrompt"),
+		MetadataPrompt:      stringArg(args, "metadataPrompt"),
+		Interpreter:         stringArg(args, "interpreter"),
+		ScriptContent:       stringArg(args, "scriptContent"),
+		EnvVariables:        mapStringArg(args, "envVariables"),
+	}
+
+	// Allow explicit override of flags (default to true)
+	if v, ok := args["allowBypass"]; ok {
+		job.AllowBypass, _ = v.(bool)
+	}
+	if v, ok := args["autonomousMode"]; ok {
+		job.AutonomousMode, _ = v.(bool)
 	}
 
 	onSuccess := stringSliceArg(args, "onSuccess")
@@ -499,6 +705,12 @@ func (s *QuantMCPServer) handleUpdateJob(_ context.Context, request mcp.CallTool
 	}
 	if v, ok := args["scriptContent"]; ok {
 		existing.ScriptContent = v.(string)
+	}
+	if v, ok := args["overrideRepoCommand"]; ok {
+		existing.OverrideRepoCommand, _ = v.(string)
+	}
+	if _, ok := args["envVariables"]; ok {
+		existing.EnvVariables = mapStringArg(args, "envVariables")
 	}
 
 	// Only update triggers if explicitly provided — nil means "don't change"
@@ -1002,9 +1214,10 @@ func jobToMap(job *entity.Job) map[string]any {
 		"autonomousMode":   job.AutonomousMode,
 		"maxRetries":       job.MaxRetries,
 		"model":            job.Model,
-		"claudeCommand":    job.ClaudeCommand,
-		"agentId":          job.AgentID,
-		"successPrompt":    job.SuccessPrompt,
+		"claudeCommand":        job.ClaudeCommand,
+		"agentId":              job.AgentID,
+		"overrideRepoCommand":  job.OverrideRepoCommand,
+		"successPrompt":        job.SuccessPrompt,
 		"failurePrompt":    job.FailurePrompt,
 		"metadataPrompt":   job.MetadataPrompt,
 		"interpreter":      job.Interpreter,

@@ -374,60 +374,70 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
   // For canvas modal, select the job so settings/history tabs work
   const canvasModalJob = jobs.find((j) => j.id === canvasModalJobId) ?? null;
 
-  // Route highlighting: compute forward paths from running jobs
+  // Route highlighting: highlight running job + immediate next jobs, dim only same-flow jobs
   const routeState = useMemo(() => {
     if (runningJobIds.size === 0) return null;
 
-    const routeNodes = new Set<string>();
-    const routeEdges = new Set<string>(); // "srcId->tgtId:type"
+    const routeNodes = new Set<string>();     // highlighted nodes (running + immediate next)
+    const routeEdges = new Set<string>();     // highlighted edges (running -> immediate next)
+    const flowNodes = new Set<string>();       // all nodes in the same flow (connected component)
     const jobMap = new Map(jobs.map((j) => [j.id, j]));
+
+    // Build undirected adjacency for connected-component discovery
+    const adj = new Map<string, Set<string>>();
+    for (const j of jobs) {
+      if (!adj.has(j.id)) adj.set(j.id, new Set());
+      for (const t of (j.onSuccess ?? [])) {
+        if (jobMap.has(t)) {
+          adj.get(j.id)!.add(t);
+          if (!adj.has(t)) adj.set(t, new Set());
+          adj.get(t)!.add(j.id);
+        }
+      }
+      for (const t of (j.onFailure ?? [])) {
+        if (jobMap.has(t)) {
+          adj.get(j.id)!.add(t);
+          if (!adj.has(t)) adj.set(t, new Set());
+          adj.get(t)!.add(j.id);
+        }
+      }
+    }
 
     for (const runId of runningJobIds) {
       routeNodes.add(runId);
       const runJob = jobMap.get(runId);
       if (!runJob) continue;
 
-      // BFS forward through success edges
+      // BFS undirected to find entire connected component (flow)
       const visited = new Set<string>([runId]);
-      const queue: string[] = [];
+      const queue: string[] = [runId];
+      while (queue.length > 0) {
+        const nid = queue.shift()!;
+        flowNodes.add(nid);
+        for (const neighbor of (adj.get(nid) ?? [])) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor);
+            queue.push(neighbor);
+          }
+        }
+      }
+
+      // Only highlight immediate next jobs (first hop)
       for (const t of (runJob.onSuccess ?? [])) {
-        if (jobMap.has(t) && !visited.has(t)) {
-          visited.add(t); queue.push(t);
+        if (jobMap.has(t)) {
           routeNodes.add(t);
           routeEdges.add(`${runId}->${t}:success`);
         }
       }
-      while (queue.length > 0) {
-        const nid = queue.shift()!;
-        const nJob = jobMap.get(nid);
-        if (!nJob) continue;
-        for (const t of (nJob.onSuccess ?? [])) {
-          if (jobMap.has(t)) {
-            routeEdges.add(`${nid}->${t}:success`);
-            routeNodes.add(t);
-            if (!visited.has(t)) { visited.add(t); queue.push(t); }
-          }
-        }
-      }
-
-      // Failure: first hop from running job + where the failure target loops back
       for (const t of (runJob.onFailure ?? [])) {
-        if (!jobMap.has(t)) continue;
-        routeEdges.add(`${runId}->${t}:failure`);
-        routeNodes.add(t);
-        const fJob = jobMap.get(t);
-        if (fJob) {
-          for (const lt of (fJob.onSuccess ?? [])) {
-            if (jobMap.has(lt)) { routeEdges.add(`${t}->${lt}:success`); routeNodes.add(lt); }
-          }
-          for (const lt of (fJob.onFailure ?? [])) {
-            if (jobMap.has(lt)) { routeEdges.add(`${t}->${lt}:failure`); routeNodes.add(lt); }
-          }
+        if (jobMap.has(t)) {
+          routeNodes.add(t);
+          routeEdges.add(`${runId}->${t}:failure`);
         }
       }
     }
 
-    return { routeNodes, routeEdges };
+    return { routeNodes, routeEdges, flowNodes };
   }, [jobs, runningJobIds]);
 
   // Hover highlighting: find directly connected nodes
@@ -1109,11 +1119,11 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
           ) : (
             runs.map((run) => {
               const active = run.id === selectedRunId;
+              const canRerun = run.status !== "running" && run.status !== "pending";
               return (
-                <button
+                <div
                   key={run.id}
-                  onClick={() => { setSelectedRunId(run.id); setSelectedRunTab("session"); }}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-left transition-colors"
+                  className="flex items-center w-full transition-colors"
                   style={{
                     backgroundColor: active ? "#1F1F1F" : "transparent",
                     fontFamily: font,
@@ -1121,25 +1131,63 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
                   onMouseEnter={(e) => { if (!active) e.currentTarget.style.backgroundColor = "#1F1F1F"; }}
                   onMouseLeave={(e) => { if (!active) e.currentTarget.style.backgroundColor = "transparent"; }}
                 >
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      backgroundColor: statusColor(run.status),
-                      flexShrink: 0,
-                      animation: run.status === "running" ? "job-pulse 1.5s ease-in-out infinite" : "none",
-                    }}
-                  />
-                  <div className="flex flex-col overflow-hidden" style={{ gap: 2 }}>
-                    <span style={{ color: "#FAFAFA", fontSize: 11, fontFamily: font }}>
-                      {run.id.slice(0, 8)}
-                    </span>
-                    <span style={{ color: "#6B7280", fontSize: 9, fontFamily: font }}>
-                      {relativeTime(run.startedAt)}
-                    </span>
-                  </div>
-                </button>
+                  <button
+                    onClick={() => { setSelectedRunId(run.id); setSelectedRunTab("session"); }}
+                    className="flex items-center gap-2 flex-1 px-3 py-2 text-left"
+                    style={{ background: "none", border: "none", cursor: "pointer", fontFamily: font, minWidth: 0 }}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        backgroundColor: statusColor(run.status),
+                        flexShrink: 0,
+                        animation: run.status === "running" ? "job-pulse 1.5s ease-in-out infinite" : "none",
+                      }}
+                    />
+                    <div className="flex flex-col overflow-hidden" style={{ gap: 2 }}>
+                      <span style={{ color: "#FAFAFA", fontSize: 11, fontFamily: font }}>
+                        {run.id.slice(0, 8)}
+                      </span>
+                      <span style={{ color: "#6B7280", fontSize: 9, fontFamily: font }}>
+                        {relativeTime(run.startedAt)}
+                      </span>
+                    </div>
+                  </button>
+                  {canRerun && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!selectedJobId) return;
+                        try {
+                          const newRun = await api.runJob(selectedJobId);
+                          await fetchRuns(selectedJobId);
+                          setSelectedRunId(newRun.id);
+                          setSelectedRunTab("session");
+                          onRefreshJobs();
+                        } catch (err) {
+                          console.error("failed to rerun job:", err);
+                        }
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "#6B7280",
+                        fontSize: 10,
+                        fontFamily: font,
+                        padding: "4px 8px",
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "#10B981")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "#6B7280")}
+                      title="rerun this job"
+                    >
+                      &#8635;
+                    </button>
+                  )}
+                </div>
               );
             })
           )}
@@ -1203,38 +1251,73 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
                       {copied ? "✓ copied" : "⧉ copy"}
                     </button>
                   )}
-                  {selectedRun.status === "running" && !runOutput && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          backgroundColor: "#10B981",
-                          animation: "job-pulse 1.5s ease-in-out infinite",
-                          display: "inline-block",
-                        }}
-                      />
-                      <span style={{ color: "#10B981", fontSize: 11, fontFamily: font }}>
-                        running...
-                      </span>
-                    </div>
-                  )}
-                  {selectedRun.status === "running" && runOutput && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          backgroundColor: "#10B981",
-                          animation: "job-pulse 1.5s ease-in-out infinite",
-                          display: "inline-block",
-                        }}
-                      />
-                      <span style={{ color: "#10B981", fontSize: 11, fontFamily: font }}>
-                        running... output updating every 3s
-                      </span>
+                  {selectedRun.status === "running" && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <span
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            backgroundColor: "#10B981",
+                            animation: "job-pulse 1.5s ease-in-out infinite",
+                            display: "inline-block",
+                          }}
+                        />
+                        <span style={{ color: "#10B981", fontSize: 11, fontFamily: font }}>
+                          {runOutput ? "running... output updating every 3s" : "running..."}
+                        </span>
+                      </div>
+                      {selectedJob && (
+                        <div
+                          style={{
+                            backgroundColor: "#0D0D0D",
+                            border: "1px solid #1a1a1a",
+                            borderRadius: 4,
+                            padding: "10px 12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ display: "flex", gap: 8, fontSize: 10, fontFamily: font }}>
+                            <span style={{ color: "#6B7280" }}>type</span>
+                            <span style={{ color: "#9CA3AF" }}>{selectedJob.type}</span>
+                            {selectedJob.model && <>
+                              <span style={{ color: "#6B7280", marginLeft: 8 }}>model</span>
+                              <span style={{ color: "#9CA3AF" }}>{selectedJob.model}</span>
+                            </>}
+                            {selectedJob.agentId && <>
+                              <span style={{ color: "#6B7280", marginLeft: 8 }}>agent</span>
+                              <span style={{ color: "#10B981" }}>{agentName(selectedJob.agentId) || selectedJob.agentId.slice(0, 8)}</span>
+                            </>}
+                          </div>
+                          {selectedRun.triggeredBy && selectedRun.triggeredBy !== "manual" && (
+                            <div style={{ display: "flex", gap: 8, fontSize: 10, fontFamily: font }}>
+                              <span style={{ color: "#6B7280" }}>triggered_by</span>
+                              <span style={{ color: "#9CA3AF" }}>
+                                {jobs.find((j) => j.id === selectedRun.triggeredBy)?.name || selectedRun.triggeredBy.slice(0, 8)}
+                              </span>
+                            </div>
+                          )}
+                          {selectedJob.type === "claude" && selectedJob.prompt && (
+                            <div style={{ fontSize: 10, fontFamily: font, marginTop: 2 }}>
+                              <span style={{ color: "#6B7280" }}>prompt </span>
+                              <span style={{ color: "#9CA3AF", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                {selectedJob.prompt.length > 300 ? selectedJob.prompt.slice(0, 300) + "..." : selectedJob.prompt}
+                              </span>
+                            </div>
+                          )}
+                          {selectedJob.type === "bash" && selectedJob.scriptContent && (
+                            <div style={{ fontSize: 10, fontFamily: font, marginTop: 2 }}>
+                              <span style={{ color: "#6B7280" }}>script </span>
+                              <span style={{ color: "#9CA3AF", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                {selectedJob.scriptContent.length > 300 ? selectedJob.scriptContent.slice(0, 300) + "..." : selectedJob.scriptContent}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                   <pre
@@ -1408,7 +1491,13 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
         if (hoverConnectedNodes && !isSelected && !isFlashing) {
           if (!isHoverRelevant) { edgeOpacity = 0.06; defaultStroke = "#4B5563"; }
         } else if (routeState && !isSelected && !isFlashing) {
-          if (!isInRoute) { edgeOpacity = 0.12; defaultStroke = "#4B5563"; }
+          const isInFlow = routeState.flowNodes.has(job.id) || routeState.flowNodes.has(targetId);
+          if (isInRoute) {
+            // highlighted edge — keep full opacity
+          } else if (isInFlow) {
+            edgeOpacity = 0.12; defaultStroke = "#4B5563";
+          }
+          // Edges between unrelated jobs stay at full opacity
         }
 
         lines.push(
@@ -1636,6 +1725,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
           animation: "modal-backdrop-in 0.2s ease-out",
         }}
         onClick={(e) => { if (e.target === e.currentTarget) setCanvasModalJobId(null); }}
+        onWheel={(e) => e.stopPropagation()}
       >
         <div
           style={{
@@ -1881,7 +1971,12 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             } else if (hoverConnectedNodes && !isDraggingThis && !isSelected && !connectingMode) {
               nodeOpacity = hoverConnectedNodes.has(job.id) ? 1 : 0.15;
             } else if (routeState && !isDraggingThis && !isSelected && !connectingMode) {
-              nodeOpacity = routeState.routeNodes.has(job.id) ? 1 : 0.35;
+              if (routeState.routeNodes.has(job.id)) {
+                nodeOpacity = 1;
+              } else if (routeState.flowNodes.has(job.id)) {
+                nodeOpacity = 0.35;
+              }
+              // Jobs not in the flow stay at opacity 1
             }
 
             const scheduleInfo = job.scheduleEnabled
