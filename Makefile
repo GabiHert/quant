@@ -44,3 +44,7 @@ retap:
 
 install:
 	brew install quant
+
+update:
+	brew update
+	brew upgrade quant
