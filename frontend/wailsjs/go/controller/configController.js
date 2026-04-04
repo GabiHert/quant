@@ -18,6 +18,10 @@ export function GetDatabasePath() {
   return window['go']['controller']['configController']['GetDatabasePath']();
 }
 
+export function GetQuantiFile(arg1) {
+  return window['go']['controller']['configController']['GetQuantiFile'](arg1);
+}
+
 export function OnShutdown(arg1) {
   return window['go']['controller']['configController']['OnShutdown'](arg1);
 }
@@ -32,6 +36,10 @@ export function ResetDatabase() {
 
 export function SaveConfig(arg1) {
   return window['go']['controller']['configController']['SaveConfig'](arg1);
+}
+
+export function SaveQuantiFile(arg1, arg2) {
+  return window['go']['controller']['configController']['SaveQuantiFile'](arg1, arg2);
 }
 
 export function SendNotification(arg1, arg2) {

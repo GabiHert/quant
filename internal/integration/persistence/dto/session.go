@@ -25,6 +25,8 @@ type SessionRow struct {
 	SkipPermissions bool
 	Model           sql.NullString
 	ExtraCliArgs    sql.NullString
+	WorkspaceID     string
+	NoFlicker       int
 	CreatedAt       string
 	UpdatedAt       string
 	LastActiveAt    string
@@ -59,6 +61,8 @@ func (r SessionRow) ToEntity() entity.Session {
 		SkipPermissions: r.SkipPermissions,
 		Model:           r.Model.String,
 		ExtraCliArgs:    r.ExtraCliArgs.String,
+		WorkspaceID:     r.WorkspaceID,
+		NoFlicker:       r.NoFlicker == 1,
 		CreatedAt:       createdAt,
 		UpdatedAt:       updatedAt,
 		LastActiveAt:    lastActiveAt,
@@ -89,11 +93,21 @@ func SessionRowFromEntity(session entity.Session) SessionRow {
 		SkipPermissions: session.SkipPermissions,
 		Model:           toNullString(session.Model),
 		ExtraCliArgs:    toNullString(session.ExtraCliArgs),
+		WorkspaceID:     session.WorkspaceID,
+		NoFlicker:       boolToInt(session.NoFlicker),
 		CreatedAt:       session.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       session.UpdatedAt.Format(time.RFC3339),
 		LastActiveAt:    session.LastActiveAt.Format(time.RFC3339),
 		ArchivedAt:      archivedAt,
 	}
+}
+
+// boolToInt converts a bool to an int (1 or 0).
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // toNullString converts a string to sql.NullString.

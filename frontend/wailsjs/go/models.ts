@@ -32,6 +32,7 @@ export namespace dto {
 	    envVariables: Record<string, string>;
 	    boundaries: string[];
 	    skills: Record<string, boolean>;
+	    workspaceId: string;
 	    createdAt: string;
 	    updatedAt: string;
 	
@@ -52,6 +53,7 @@ export namespace dto {
 	        this.envVariables = source["envVariables"];
 	        this.boundaries = source["boundaries"];
 	        this.skills = source["skills"];
+	        this.workspaceId = source["workspaceId"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }
@@ -100,6 +102,7 @@ export namespace dto {
 	    cliBinaryPath: string;
 	    extraCliArgs: string;
 	    defaultModel: string;
+	    assistantModel: string;
 	    envVariables: Record<string, string>;
 	    commandOverrides: Record<string, string>;
 	
@@ -138,6 +141,7 @@ export namespace dto {
 	        this.cliBinaryPath = source["cliBinaryPath"];
 	        this.extraCliArgs = source["extraCliArgs"];
 	        this.defaultModel = source["defaultModel"];
+	        this.assistantModel = source["assistantModel"];
 	        this.envVariables = source["envVariables"];
 	        this.commandOverrides = source["commandOverrides"];
 	    }
@@ -171,6 +175,7 @@ export namespace dto {
 	    envVariables: Record<string, string>;
 	    boundaries: string[];
 	    skills: Record<string, boolean>;
+	    workspaceId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateAgentRequest(source);
@@ -188,6 +193,23 @@ export namespace dto {
 	        this.envVariables = source["envVariables"];
 	        this.boundaries = source["boundaries"];
 	        this.skills = source["skills"];
+	        this.workspaceId = source["workspaceId"];
+	    }
+	}
+	export class CreateJobGroupRequest {
+	    name: string;
+	    jobIds: string[];
+	    workspaceId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateJobGroupRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.jobIds = source["jobIds"];
+	        this.workspaceId = source["workspaceId"];
 	    }
 	}
 	export class CreateJobRequest {
@@ -216,6 +238,7 @@ export namespace dto {
 	    envVariables: Record<string, string>;
 	    onSuccess: string[];
 	    onFailure: string[];
+	    workspaceId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateJobRequest(source);
@@ -248,11 +271,13 @@ export namespace dto {
 	        this.envVariables = source["envVariables"];
 	        this.onSuccess = source["onSuccess"];
 	        this.onFailure = source["onFailure"];
+	        this.workspaceId = source["workspaceId"];
 	    }
 	}
 	export class CreateRepoRequest {
 	    name: string;
 	    path: string;
+	    workspaceId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateRepoRequest(source);
@@ -262,6 +287,7 @@ export namespace dto {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.path = source["path"];
+	        this.workspaceId = source["workspaceId"];
 	    }
 	}
 	export class CreateSessionRequest {
@@ -278,6 +304,7 @@ export namespace dto {
 	    model: string;
 	    extraCliArgs: string;
 	    directoryOverride: string;
+	    workspaceId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateSessionRequest(source);
@@ -298,6 +325,7 @@ export namespace dto {
 	        this.model = source["model"];
 	        this.extraCliArgs = source["extraCliArgs"];
 	        this.directoryOverride = source["directoryOverride"];
+	        this.workspaceId = source["workspaceId"];
 	    }
 	}
 	export class CreateTaskRequest {
@@ -316,6 +344,18 @@ export namespace dto {
 	        this.name = source["name"];
 	    }
 	}
+	export class CreateWorkspaceRequest {
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateWorkspaceRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	    }
+	}
 	export class DiffFileResponse {
 	    path: string;
 	    status: string;
@@ -330,6 +370,28 @@ export namespace dto {
 	        this.path = source["path"];
 	        this.status = source["status"];
 	        this.oldPath = source["oldPath"];
+	    }
+	}
+	export class JobGroupResponse {
+	    id: string;
+	    name: string;
+	    jobIds: string[];
+	    workspaceId: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new JobGroupResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.jobIds = source["jobIds"];
+	        this.workspaceId = source["workspaceId"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
 	    }
 	}
 	export class TriggerRef {
@@ -371,6 +433,7 @@ export namespace dto {
 	    interpreter: string;
 	    scriptContent: string;
 	    envVariables: Record<string, string>;
+	    workspaceId: string;
 	    createdAt: string;
 	    updatedAt: string;
 	    onSuccess: string[];
@@ -407,6 +470,7 @@ export namespace dto {
 	        this.interpreter = source["interpreter"];
 	        this.scriptContent = source["scriptContent"];
 	        this.envVariables = source["envVariables"];
+	        this.workspaceId = source["workspaceId"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	        this.onSuccess = source["onSuccess"];
@@ -470,6 +534,7 @@ export namespace dto {
 	    id: string;
 	    name: string;
 	    path: string;
+	    workspaceId: string;
 	    createdAt: string;
 	    updatedAt: string;
 	
@@ -482,6 +547,7 @@ export namespace dto {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.path = source["path"];
+	        this.workspaceId = source["workspaceId"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }
@@ -516,6 +582,7 @@ export namespace dto {
 	    cliBinaryPath: string;
 	    extraCliArgs: string;
 	    defaultModel: string;
+	    assistantModel: string;
 	    envVariables: Record<string, string>;
 	    commandOverrides: Record<string, string>;
 	
@@ -554,6 +621,7 @@ export namespace dto {
 	        this.cliBinaryPath = source["cliBinaryPath"];
 	        this.extraCliArgs = source["extraCliArgs"];
 	        this.defaultModel = source["defaultModel"];
+	        this.assistantModel = source["assistantModel"];
 	        this.envVariables = source["envVariables"];
 	        this.commandOverrides = source["commandOverrides"];
 	    }
@@ -589,6 +657,7 @@ export namespace dto {
 	    pid: number;
 	    repoId: string;
 	    taskId: string;
+	    workspaceId: string;
 	    createdAt: string;
 	    updatedAt: string;
 	    lastActiveAt: string;
@@ -612,6 +681,7 @@ export namespace dto {
 	        this.pid = source["pid"];
 	        this.repoId = source["repoId"];
 	        this.taskId = source["taskId"];
+	        this.workspaceId = source["workspaceId"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	        this.lastActiveAt = source["lastActiveAt"];
@@ -670,6 +740,7 @@ export namespace dto {
 	    envVariables: Record<string, string>;
 	    boundaries: string[];
 	    skills: Record<string, boolean>;
+	    workspaceId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateAgentRequest(source);
@@ -688,6 +759,25 @@ export namespace dto {
 	        this.envVariables = source["envVariables"];
 	        this.boundaries = source["boundaries"];
 	        this.skills = source["skills"];
+	        this.workspaceId = source["workspaceId"];
+	    }
+	}
+	export class UpdateJobGroupRequest {
+	    id: string;
+	    name: string;
+	    jobIds: string[];
+	    workspaceId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateJobGroupRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.jobIds = source["jobIds"];
+	        this.workspaceId = source["workspaceId"];
 	    }
 	}
 	export class UpdateJobRequest {
@@ -717,6 +807,7 @@ export namespace dto {
 	    envVariables: Record<string, string>;
 	    onSuccess: string[];
 	    onFailure: string[];
+	    workspaceId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateJobRequest(source);
@@ -750,6 +841,39 @@ export namespace dto {
 	        this.envVariables = source["envVariables"];
 	        this.onSuccess = source["onSuccess"];
 	        this.onFailure = source["onFailure"];
+	        this.workspaceId = source["workspaceId"];
+	    }
+	}
+	export class UpdateWorkspaceRequest {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateWorkspaceRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
+	export class WorkspaceResponse {
+	    id: string;
+	    name: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
 	    }
 	}
 

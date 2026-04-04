@@ -12,4 +12,6 @@ type SessionOptions struct {
 	Model             string
 	ExtraCliArgs      string
 	DirectoryOverride string // If set, use this directory instead of repo path
+	WorkspaceID       string // Workspace to assign the session to
+	NoFlicker         bool   // Enable NO_FLICKER terminal mode
 }

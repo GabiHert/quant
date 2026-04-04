@@ -10,6 +10,7 @@ type TabKey = "general" | "schedule" | "session" | "script";
 
 interface Props {
   jobs: Job[];
+  agents: Agent[];
   editJob?: Job;
   onSubmit: (req: CreateJobRequest | UpdateJobRequest) => void;
   onCancel: () => void;
@@ -75,7 +76,7 @@ function jobToForm(job: Job): CreateJobRequest {
   };
 }
 
-export function CreateJobModal({ jobs, editJob, onSubmit, onCancel }: Props) {
+export function CreateJobModal({ jobs, agents, editJob, onSubmit, onCancel }: Props) {
   const isEdit = !!editJob;
   const [form, setForm] = useState<CreateJobRequest>(
     editJob ? jobToForm(editJob) : buildDefaultForm()
@@ -89,12 +90,6 @@ export function CreateJobModal({ jobs, editJob, onSubmit, onCancel }: Props) {
   const successRef = useRef<HTMLDivElement>(null);
   const failureRef = useRef<HTMLDivElement>(null);
 
-  // Agents list for dropdown
-  const [agents, setAgents] = useState<Agent[]>([]);
-
-  useEffect(() => {
-    api.listAgents().then((list) => setAgents(list ?? [])).catch(() => {});
-  }, []);
 
   // Env variable inputs
   const [newEnvKey, setNewEnvKey] = useState("");

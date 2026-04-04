@@ -7,10 +7,11 @@ import (
 
 // Repo represents a git repository registered in the application.
 type Repo struct {
-	ID        string
-	Name      string
-	Path      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	ClosedAt  *time.Time
+	ID          string
+	Name        string
+	Path        string
+	WorkspaceID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	ClosedAt    *time.Time
 }

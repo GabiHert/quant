@@ -21,6 +21,7 @@ type AgentRow struct {
 	EnvVariables   string // JSON
 	Boundaries     string // JSON
 	Skills         string // JSON
+	WorkspaceID    string
 	CreatedAt      string
 	UpdatedAt      string
 }
@@ -62,6 +63,7 @@ func (r AgentRow) ToEntity() entity.Agent {
 		EnvVariables:   envVars,
 		Boundaries:     boundaries,
 		Skills:         skills,
+		WorkspaceID:    r.WorkspaceID,
 		CreatedAt:      createdAt,
 		UpdatedAt:      updatedAt,
 	}
@@ -106,6 +108,7 @@ func AgentRowFromEntity(agent entity.Agent) AgentRow {
 		EnvVariables:   string(envJSON),
 		Boundaries:     string(boundJSON),
 		Skills:         string(skillsJSON),
+		WorkspaceID:    agent.WorkspaceID,
 		CreatedAt:      agent.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:      agent.UpdatedAt.Format(time.RFC3339),
 	}

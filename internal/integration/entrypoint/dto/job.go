@@ -32,6 +32,7 @@ type CreateJobRequest struct {
 	EnvVariables        map[string]string `json:"envVariables"`
 	OnSuccess           []string          `json:"onSuccess"`
 	OnFailure           []string          `json:"onFailure"`
+	WorkspaceID         string            `json:"workspaceId"`
 }
 
 // UpdateJobRequest represents the request payload for updating an existing job.
@@ -62,6 +63,7 @@ type UpdateJobRequest struct {
 	EnvVariables        map[string]string `json:"envVariables"`
 	OnSuccess           []string          `json:"onSuccess"`
 	OnFailure           []string          `json:"onFailure"`
+	WorkspaceID         string            `json:"workspaceId"`
 }
 
 // JobResponse represents the response payload for job data.
@@ -90,6 +92,7 @@ type JobResponse struct {
 	Interpreter         string            `json:"interpreter"`
 	ScriptContent       string            `json:"scriptContent"`
 	EnvVariables        map[string]string `json:"envVariables"`
+	WorkspaceID         string            `json:"workspaceId"`
 	CreatedAt           string            `json:"createdAt"`
 	UpdatedAt           string            `json:"updatedAt"`
 	OnSuccess           []string          `json:"onSuccess"`
@@ -161,6 +164,7 @@ func JobResponseFromEntity(job entity.Job, onSuccess []entity.JobTrigger, onFail
 		Interpreter:         job.Interpreter,
 		ScriptContent:       job.ScriptContent,
 		EnvVariables:        job.EnvVariables,
+		WorkspaceID:         job.WorkspaceID,
 		CreatedAt:           job.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:           job.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		OnSuccess:           successIDs,

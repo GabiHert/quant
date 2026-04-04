@@ -13,7 +13,7 @@ type RepoController interface {
 	OnShutdown(ctx context.Context)
 	BrowseDirectory() (string, error)
 	OpenRepo(request dto.CreateRepoRequest) (*dto.RepoResponse, error)
-	ListRepos() ([]dto.RepoResponse, error)
+	ListReposByWorkspace(workspaceID string) ([]dto.RepoResponse, error)
 	GetRepo(id string) (*dto.RepoResponse, error)
 	RemoveRepo(id string) error
 	OpenInTerminal(path string) error

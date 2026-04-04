@@ -36,10 +36,10 @@ func NewRepoManagerService(
 	}
 }
 
-// OpenRepo registers a new repository or reopens a previously closed one with the same path.
-func (s *repoManagerService) OpenRepo(name string, path string) (*entity.Repo, error) {
-	// Check if a repo with this path already exists (possibly closed).
-	existing, err := s.findRepo.FindRepoByPath(path)
+// OpenRepo registers a new repository or reopens a previously closed one with the same path in the same workspace.
+func (s *repoManagerService) OpenRepo(name string, path string, workspaceID string) (*entity.Repo, error) {
+	// Check if a repo with this path already exists in this workspace (possibly closed).
+	existing, err := s.findRepo.FindRepoByPathAndWorkspace(path, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing repo: %w", err)
 	}
@@ -59,11 +59,12 @@ func (s *repoManagerService) OpenRepo(name string, path string) (*entity.Repo, e
 
 	now := time.Now()
 	repo := entity.Repo{
-		ID:        uuid.New().String(),
-		Name:      name,
-		Path:      path,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          uuid.New().String(),
+		Name:        name,
+		Path:        path,
+		WorkspaceID: workspaceID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	err = s.saveRepo.SaveRepo(repo)
@@ -74,9 +75,9 @@ func (s *repoManagerService) OpenRepo(name string, path string) (*entity.Repo, e
 	return &repo, nil
 }
 
-// ListRepos returns all open (non-closed) repositories.
-func (s *repoManagerService) ListRepos() ([]entity.Repo, error) {
-	repos, err := s.findRepo.FindAllRepos()
+// ListReposByWorkspace returns all open (non-closed) repositories for a specific workspace.
+func (s *repoManagerService) ListReposByWorkspace(workspaceID string) ([]entity.Repo, error) {
+	repos, err := s.findRepo.FindReposByWorkspace(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list repos: %w", err)
 	}

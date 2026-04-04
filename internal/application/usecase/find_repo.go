@@ -7,6 +7,7 @@ import (
 // FindRepo defines the interface for repo retrieval operations.
 type FindRepo interface {
 	FindRepoByID(id string) (*entity.Repo, error)
-	FindRepoByPath(path string) (*entity.Repo, error)
+	FindRepoByPathAndWorkspace(path string, workspaceID string) (*entity.Repo, error)
 	FindAllRepos() ([]entity.Repo, error)
+	FindReposByWorkspace(workspaceID string) ([]entity.Repo, error)
 }

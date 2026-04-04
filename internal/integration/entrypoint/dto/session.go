@@ -22,6 +22,7 @@ type CreateSessionRequest struct {
 	Model             string `json:"model"`
 	ExtraCliArgs      string `json:"extraCliArgs"`
 	DirectoryOverride string `json:"directoryOverride"`
+	WorkspaceID       string `json:"workspaceId"`
 }
 
 // SessionResponse represents the response payload for session data.
@@ -38,6 +39,7 @@ type SessionResponse struct {
 	PID          int    `json:"pid"`
 	RepoID       string `json:"repoId"`
 	TaskID       string `json:"taskId"`
+	WorkspaceID  string `json:"workspaceId"`
 	CreatedAt    string `json:"createdAt"`
 	UpdatedAt    string `json:"updatedAt"`
 	LastActiveAt string `json:"lastActiveAt"`
@@ -64,6 +66,7 @@ func SessionResponseFromEntity(session entity.Session) SessionResponse {
 		PID:          session.PID,
 		RepoID:       session.RepoID,
 		TaskID:       session.TaskID,
+		WorkspaceID:  session.WorkspaceID,
 		CreatedAt:    session.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:    session.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		LastActiveAt: session.LastActiveAt.Format("2006-01-02T15:04:05Z07:00"),

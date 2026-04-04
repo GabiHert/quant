@@ -2,6 +2,7 @@ export interface Repo {
   id: string;
   name: string;
   path: string;
+  workspaceId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +34,7 @@ export interface Session {
   updatedAt: string;
   lastActiveAt: string;
   archivedAt: string;
+  workspaceId: string;
 }
 
 export type ActionType =
@@ -54,6 +56,7 @@ export interface Action {
 export interface CreateRepoRequest {
   name: string;
   path: string;
+  workspaceId?: string;
 }
 
 export interface CreateTaskRequest {
@@ -78,6 +81,7 @@ export interface CreateSessionRequest {
   model: string;
   extraCliArgs: string;
   directoryOverride?: string;
+  workspaceId?: string;
 }
 
 // --- Jobs ---
@@ -114,6 +118,7 @@ export interface Job {
   onSuccess: string[];
   onFailure: string[];
   triggeredBy: TriggerRef[];
+  workspaceId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -149,6 +154,7 @@ export interface CreateJobRequest {
   envVariables: Record<string, string>;
   onSuccess: string[];
   onFailure: string[];
+  workspaceId?: string;
 }
 
 export interface UpdateJobRequest extends CreateJobRequest {
@@ -222,6 +228,7 @@ export interface Config {
   cliBinaryPath: string;
   extraCliArgs: string;
   defaultModel: string;
+  assistantModel: string;
   envVariables: Record<string, string>;
   commandOverrides: Record<string, string>;
 }
@@ -240,6 +247,7 @@ export interface Agent {
   envVariables: Record<string, string>;
   boundaries: string[];
   skills: Record<string, boolean>;
+  workspaceId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -255,6 +263,7 @@ export interface CreateAgentRequest {
   envVariables: Record<string, string>;
   boundaries: string[];
   skills: Record<string, boolean>;
+  workspaceId?: string;
 }
 
 export interface UpdateAgentRequest extends CreateAgentRequest {
@@ -264,4 +273,46 @@ export interface UpdateAgentRequest extends CreateAgentRequest {
 export interface SkillInfo {
   name: string;
   filePath: string;
+}
+
+// --- Workspaces ---
+
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Job Groups ---
+
+export interface JobGroup {
+  id: string;
+  name: string;
+  jobIds: string[];
+  workspaceId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateJobGroupRequest {
+  name: string;
+  jobIds: string[];
+  workspaceId?: string;
+}
+
+export interface UpdateJobGroupRequest {
+  id: string;
+  name: string;
+  jobIds: string[];
+  workspaceId?: string;
+}
+
+export interface CreateWorkspaceRequest {
+  name: string;
+}
+
+export interface UpdateWorkspaceRequest {
+  id: string;
+  name: string;
 }

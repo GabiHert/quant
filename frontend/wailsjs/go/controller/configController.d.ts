@@ -11,6 +11,8 @@ export function GetConfig():Promise<dto.ConfigResponse>;
 
 export function GetDatabasePath():Promise<string>;
 
+export function GetQuantiFile(arg1:string):Promise<string>;
+
 export function OnShutdown(arg1:context.Context):Promise<void>;
 
 export function OnStartup(arg1:context.Context):Promise<void>;
@@ -18,5 +20,7 @@ export function OnStartup(arg1:context.Context):Promise<void>;
 export function ResetDatabase():Promise<void>;
 
 export function SaveConfig(arg1:dto.SaveConfigRequest):Promise<void>;
+
+export function SaveQuantiFile(arg1:string,arg2:string):Promise<void>;
 
 export function SendNotification(arg1:string,arg2:string):Promise<void>;

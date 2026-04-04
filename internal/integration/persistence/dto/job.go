@@ -36,6 +36,7 @@ type JobRow struct {
 	Interpreter         string
 	ScriptContent       string
 	EnvVariables        string // JSON
+	WorkspaceID         string
 	CreatedAt           string
 	UpdatedAt           string
 	LastRunAt           sql.NullString
@@ -89,6 +90,7 @@ func (r JobRow) ToEntity() entity.Job {
 		Interpreter:         r.Interpreter,
 		ScriptContent:       r.ScriptContent,
 		EnvVariables:        envVars,
+		WorkspaceID:         r.WorkspaceID,
 		CreatedAt:           createdAt,
 		UpdatedAt:           updatedAt,
 		LastRunAt:           lastRunAt,
@@ -151,6 +153,7 @@ func JobRowFromEntity(job entity.Job) JobRow {
 		Interpreter:         job.Interpreter,
 		ScriptContent:       job.ScriptContent,
 		EnvVariables:        string(envJSON),
+		WorkspaceID:         job.WorkspaceID,
 		CreatedAt:           job.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:           job.UpdatedAt.Format(time.RFC3339),
 		LastRunAt:           lastRunAt,

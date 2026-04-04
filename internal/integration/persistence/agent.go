@@ -21,14 +21,14 @@ func NewAgentPersistence(db *sql.DB) adapter.AgentPersistence {
 }
 
 const agentColumns = `id, name, color, role, goal, model, autonomous_mode,
-		mcp_servers, env_variables, boundaries, skills, created_at, updated_at`
+		mcp_servers, env_variables, boundaries, skills, workspace_id, created_at, updated_at`
 
 func scanAgentRow(scanner interface{ Scan(...any) error }) (pdto.AgentRow, error) {
 	var row pdto.AgentRow
 	err := scanner.Scan(
 		&row.ID, &row.Name, &row.Color, &row.Role, &row.Goal, &row.Model,
 		&row.AutonomousMode, &row.McpServers, &row.EnvVariables,
-		&row.Boundaries, &row.Skills, &row.CreatedAt, &row.UpdatedAt,
+		&row.Boundaries, &row.Skills, &row.WorkspaceID, &row.CreatedAt, &row.UpdatedAt,
 	)
 	return row, err
 }
@@ -81,13 +81,13 @@ func (p *agentPersistence) SaveAgent(agent entity.Agent) error {
 	row := pdto.AgentRowFromEntity(agent)
 
 	query := `INSERT INTO agents (id, name, color, role, goal, model, autonomous_mode,
-		mcp_servers, env_variables, boundaries, skills, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		mcp_servers, env_variables, boundaries, skills, workspace_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := p.db.Exec(query,
 		row.ID, row.Name, row.Color, row.Role, row.Goal, row.Model,
 		row.AutonomousMode, row.McpServers, row.EnvVariables,
-		row.Boundaries, row.Skills, row.CreatedAt, row.UpdatedAt,
+		row.Boundaries, row.Skills, row.WorkspaceID, row.CreatedAt, row.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save agent: %w", err)
@@ -102,12 +102,12 @@ func (p *agentPersistence) UpdateAgent(agent entity.Agent) error {
 
 	query := `UPDATE agents SET name = ?, color = ?, role = ?, goal = ?, model = ?,
 		autonomous_mode = ?, mcp_servers = ?, env_variables = ?, boundaries = ?,
-		skills = ?, updated_at = ? WHERE id = ?`
+		skills = ?, workspace_id = ?, updated_at = ? WHERE id = ?`
 
 	result, err := p.db.Exec(query,
 		row.Name, row.Color, row.Role, row.Goal, row.Model,
 		row.AutonomousMode, row.McpServers, row.EnvVariables, row.Boundaries,
-		row.Skills, row.UpdatedAt, row.ID,
+		row.Skills, row.WorkspaceID, row.UpdatedAt, row.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update agent: %w", err)

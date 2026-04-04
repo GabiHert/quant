@@ -18,4 +18,6 @@ type ConfigController interface {
 	BrowseDirectory() (string, error)
 	GetDatabasePath() string
 	SendNotification(title, message string) error
+	GetQuantiFile(name string) (string, error)
+	SaveQuantiFile(name string, content string) error
 }

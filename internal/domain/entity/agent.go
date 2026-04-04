@@ -19,6 +19,7 @@ type Agent struct {
 	EnvVariables   map[string]string // private env vars/secrets
 	Boundaries     []string          // anti-prompt rules
 	Skills         map[string]bool   // skill name → enabled
+	WorkspaceID    string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Job, JobRun, UpdateJobRequest, Agent } from "../types";
+import type { Job, JobRun, UpdateJobRequest, Agent, JobGroup } from "../types";
 import * as api from "../api";
 
 type JobTab = "settings" | "history";
@@ -7,9 +7,13 @@ type RunTab = "session" | "result";
 
 interface Props {
   jobs: Job[];
+  agents: Agent[];
+  jobGroups: JobGroup[];
+  activeWorkspaceId: string;
   onCreateJob: () => void;
   onEditJob: (job: Job) => void;
   onRefreshJobs: () => void;
+  onRefreshJobGroups: () => void;
 }
 
 const font = "'JetBrains Mono', monospace";
@@ -320,7 +324,7 @@ function savePositions(positions: NodePositions) {
   } catch { /* ignore */ }
 }
 
-export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props) {
+export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJob, onEditJob, onRefreshJobs, onRefreshJobGroups }: Props) {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<JobTab>("settings");
   const [runs, setRuns] = useState<JobRun[]>([]);
@@ -329,12 +333,29 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
   const [runOutput, setRunOutput] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [parentRunInfo, setParentRunInfo] = useState<{ jobName: string; result: string; metadata: string } | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const agentName = (id?: string) => {
     if (!id) return null;
     const a = agents.find((a) => a.id === id);
     return a ? a.name : null;
   };
+
+  // Multi-select state
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
+  const selectionBoxRef = useRef(selectionBox);
+  selectionBoxRef.current = selectionBox;
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: { label: string; action: () => void }[] } | null>(null);
+  const [groupNameInput, setGroupNameInput] = useState<string>("");
+  const [showGroupNameInput, setShowGroupNameInput] = useState(false);
+
+  // Groups sidebar state
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
+
+  // Animation ref for animated pan/zoom
+  const animFrameRef = useRef<number>(0);
 
   // Canvas state
   const [nodePositions, setNodePositions] = useState<NodePositions>(() => {
@@ -348,6 +369,33 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
   const [canvasModalJobId, setCanvasModalJobId] = useState<string | null>(null);
   const [canvasModalTab, setCanvasModalTab] = useState<JobTab>("settings");
   const [connectingMode, setConnectingMode] = useState<{ type: "success" | "failure"; sourceId?: string } | null>(null);
+  const [triggerDropdownOpen, setTriggerDropdownOpen] = useState(false);
+  const [groupsSidebarWidth, setGroupsSidebarWidth] = useState(200);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+
+  // Sidebar resize drag
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    const handleMove = (e: MouseEvent) => {
+      const newWidth = Math.max(140, Math.min(400, e.clientX));
+      setGroupsSidebarWidth(newWidth);
+    };
+    const handleUp = () => setResizingSidebar(false);
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+  }, [resizingSidebar]);
+
+  // Close trigger dropdown on outside click
+  useEffect(() => {
+    if (!triggerDropdownOpen) return;
+    const handle = () => setTriggerDropdownOpen(false);
+    const timer = setTimeout(() => document.addEventListener("click", handle), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("click", handle); };
+  }, [triggerDropdownOpen]);
   const [connectMousePos, setConnectMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
@@ -646,11 +694,6 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
     return () => clearInterval(interval);
   }, [onRefreshJobs]);
 
-  // Fetch agents list for display on job cards
-  useEffect(() => {
-    api.listAgents().then((list) => setAgents(list ?? [])).catch(() => {});
-  }, []);
-
   // Poll for running jobs on the canvas and detect trigger firings
   const prevRunningRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -833,7 +876,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
     };
   }, [canvasModalJobId]);
 
-  // Global mouse handlers for drag and pan
+  // Global mouse handlers for drag, pan, and selection box
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (dragging) {
@@ -858,6 +901,37 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
         const dx = e.clientX - panning.startX;
         const dy = e.clientY - panning.startY;
         setCanvasOffset({ x: panning.offsetStartX + dx, y: panning.offsetStartY + dy });
+      }
+      // Selection box drag
+      if (selectionBoxRef.current) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (rect) {
+          const worldX = (e.clientX - rect.left - canvasOffset.x) / zoom;
+          const worldY = (e.clientY - rect.top - canvasOffset.y) / zoom;
+          const sb = selectionBoxRef.current;
+          const updated = { ...sb, currentX: worldX, currentY: worldY };
+          setSelectionBox(updated);
+
+          // Compute which jobs intersect the selection rect
+          const boxMinX = Math.min(sb.startX, worldX);
+          const boxMaxX = Math.max(sb.startX, worldX);
+          const boxMinY = Math.min(sb.startY, worldY);
+          const boxMaxY = Math.max(sb.startY, worldY);
+
+          const selected = new Set<string>();
+          for (const job of jobs) {
+            const pos = nodePositions[job.id];
+            if (!pos) continue;
+            const nodeMinX = pos.x;
+            const nodeMaxX = pos.x + NODE_W;
+            const nodeMinY = pos.y;
+            const nodeMaxY = pos.y + NODE_H;
+            if (nodeMaxX >= boxMinX && nodeMinX <= boxMaxX && nodeMaxY >= boxMinY && nodeMinY <= boxMaxY) {
+              selected.add(job.id);
+            }
+          }
+          setSelectedJobIds(selected);
+        }
       }
     }
     function onMouseUp(e: MouseEvent) {
@@ -884,6 +958,17 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
       if (panning) {
         setPanning(null);
       }
+      // Finalize selection box
+      if (selectionBoxRef.current) {
+        const sb = selectionBoxRef.current;
+        const dx = Math.abs(sb.currentX - sb.startX);
+        const dy = Math.abs(sb.currentY - sb.startY);
+        // If it was just a click (no significant drag), clear selection
+        if (dx < 5 && dy < 5) {
+          setSelectedJobIds(new Set());
+        }
+        setSelectionBox(null);
+      }
     }
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
@@ -891,7 +976,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [dragging, panning, zoom]);
+  }, [dragging, panning, zoom, jobs, nodePositions, canvasOffset]);
 
   async function handleNodeClick(jobId: string) {
     if (!connectingMode) return;
@@ -987,6 +1072,85 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
     });
   }
 
+  // Animated pan/zoom
+  function animateToView(targetZoom: number, targetOffset: { x: number; y: number }, duration = 500) {
+    cancelAnimationFrame(animFrameRef.current);
+    const startZoom = zoom;
+    const startOffset = { ...canvasOffset };
+    const startTime = Date.now();
+
+    function easeInOutQuad(t: number): number {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    function step() {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const e = easeInOutQuad(t);
+
+      setZoom(startZoom + (targetZoom - startZoom) * e);
+      setCanvasOffset({
+        x: startOffset.x + (targetOffset.x - startOffset.x) * e,
+        y: startOffset.y + (targetOffset.y - startOffset.y) * e,
+      });
+
+      if (t < 1) {
+        animFrameRef.current = requestAnimationFrame(step);
+      }
+    }
+
+    animFrameRef.current = requestAnimationFrame(step);
+  }
+
+  function focusOnJob(jobId: string) {
+    const pos = nodePositions[jobId];
+    if (!pos || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const targetZoom = 1.0;
+    const centerX = pos.x + NODE_W / 2;
+    const centerY = pos.y + NODE_H / 2;
+    animateToView(targetZoom, {
+      x: rect.width / 2 - centerX * targetZoom,
+      y: rect.height / 2 - centerY * targetZoom,
+    });
+  }
+
+  function focusOnGroup(group: JobGroup) {
+    if (!canvasRef.current || group.jobIds.length === 0) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const positions = group.jobIds.map((id) => nodePositions[id]).filter(Boolean);
+    if (positions.length === 0) return;
+
+    const minX = Math.min(...positions.map((p) => p.x));
+    const maxX = Math.max(...positions.map((p) => p.x + NODE_W));
+    const minY = Math.min(...positions.map((p) => p.y));
+    const maxY = Math.max(...positions.map((p) => p.y + NODE_H));
+
+    const padding = 100;
+    const contentW = maxX - minX + padding * 2;
+    const contentH = maxY - minY + padding * 2;
+
+    const scaleX = rect.width / contentW;
+    const scaleY = rect.height / contentH;
+    const targetZoom = Math.min(Math.max(Math.min(scaleX, scaleY), 0.25), 2);
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    animateToView(targetZoom, {
+      x: rect.width / 2 - centerX * targetZoom,
+      y: rect.height / 2 - centerY * targetZoom,
+    });
+  }
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handleClick() { setContextMenu(null); setShowGroupNameInput(false); setGroupNameInput(""); }
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [contextMenu]);
+
   function handleWheel(e: React.WheelEvent) {
     e.preventDefault();
     if (e.metaKey || e.ctrlKey) {
@@ -1025,6 +1189,15 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
         offsetStartX: canvasOffset.x,
         offsetStartY: canvasOffset.y,
       });
+      return;
+    }
+    // Left click on empty canvas (not on node, not connecting) -> start selection box
+    if (e.button === 0 && !connectingMode && !spaceDown && e.target === e.currentTarget) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const worldX = (e.clientX - rect.left - canvasOffset.x) / zoom;
+      const worldY = (e.clientY - rect.top - canvasOffset.y) / zoom;
+      setSelectionBox({ startX: worldX, startY: worldY, currentX: worldX, currentY: worldY });
     }
   }
 
@@ -1563,7 +1736,12 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
         const isInRoute = routeState?.routeEdges.has(routeEdgeKey) ?? false;
         let edgeOpacity = 1;
         let defaultStroke = edgeColor;
-        if (hoverConnectedNodes && !isSelected && !isFlashing) {
+        if (hoveredGroupId && !isSelected && !isFlashing) {
+          const groupJobIds = jobGroups.find((g) => g.id === hoveredGroupId)?.jobIds ?? [];
+          const srcInGroup = groupJobIds.includes(job.id);
+          const tgtInGroup = groupJobIds.includes(targetId);
+          if (!srcInGroup && !tgtInGroup) { edgeOpacity = 0.06; defaultStroke = "#4B5563"; }
+        } else if (hoverConnectedNodes && !isSelected && !isFlashing) {
           if (!isHoverRelevant) { edgeOpacity = 0.06; defaultStroke = "#4B5563"; }
         } else if (routeState && !isSelected && !isFlashing) {
           const isInFlow = routeState.flowNodes.has(job.id) || routeState.flowNodes.has(targetId);
@@ -1721,25 +1899,56 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
     const vpRW = vpW * scale;
     const vpRH = vpH * scale;
 
-    function handleMinimapClick(e: React.MouseEvent<HTMLDivElement>) {
+    function handleMinimapMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+      e.preventDefault();
+      e.stopPropagation();
       const rect = e.currentTarget.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const clickY = e.clientY - rect.top;
-      const worldX = clickX / scale + minX;
-      const worldY = clickY / scale + minY;
-      setCanvasOffset({
-        x: -(worldX - vpW / 2) * zoom,
-        y: -(worldY - vpH / 2) * zoom,
-      });
+
+      // Check if clicking inside the viewport rect
+      const insideVp = clickX >= vpX && clickX <= vpX + vpRW && clickY >= vpY && clickY <= vpY + vpRH;
+
+      if (insideVp) {
+        // Drag the viewport rect
+        const startMouseX = e.clientX;
+        const startMouseY = e.clientY;
+        const startOffsetX = canvasOffset.x;
+        const startOffsetY = canvasOffset.y;
+
+        const onMove = (me: MouseEvent) => {
+          const dx = (me.clientX - startMouseX) / scale;
+          const dy = (me.clientY - startMouseY) / scale;
+          setCanvasOffset({
+            x: startOffsetX - dx * zoom,
+            y: startOffsetY - dy * zoom,
+          });
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      } else {
+        // Click outside viewport rect — jump canvas to that world position
+        const worldX = clickX / scale + minX;
+        const worldY = clickY / scale + minY;
+        setCanvasOffset({
+          x: -(worldX - vpW / 2) * zoom,
+          y: -(worldY - vpH / 2) * zoom,
+        });
+      }
     }
 
     return (
       <div
-        onClick={handleMinimapClick}
+        onMouseDown={handleMinimapMouseDown}
         style={{
           position: "absolute",
           bottom: 16,
           right: 56,
+          zIndex: 10,
           width: 180,
           height: 120,
           backgroundColor: "#111111",
@@ -1777,7 +1986,8 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             height: vpRH,
             border: "1px solid #6B7280",
             borderRadius: 1,
-            pointerEvents: "none",
+            backgroundColor: "rgba(107,114,128,0.08)",
+            cursor: "grab",
           }}
         />
       </div>
@@ -1925,6 +2135,35 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             }
           }
         }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (selectedJobIds.size === 0) return;
+          const items: { label: string; action: () => void }[] = [];
+          // Check if all selected jobs are in the same group for "Ungroup" option
+          const selectedArr = [...selectedJobIds];
+          const groupForSelected = jobGroups.find((g) => selectedArr.every((jid) => g.jobIds.includes(jid)) && selectedArr.length > 0);
+          items.push({ label: "Create Group", action: () => { setShowGroupNameInput(true); } });
+          if (groupForSelected) {
+            items.push({
+              label: "Ungroup",
+              action: async () => {
+                try {
+                  const remaining = groupForSelected.jobIds.filter((id) => !selectedJobIds.has(id));
+                  if (remaining.length === 0) {
+                    await api.deleteJobGroup(groupForSelected.id);
+                  } else {
+                    await api.updateJobGroup({ id: groupForSelected.id, name: groupForSelected.name, jobIds: remaining, workspaceId: activeWorkspaceId });
+                  }
+                  onRefreshJobGroups();
+                  setContextMenu(null);
+                } catch (err) { console.error("failed to ungroup:", err); }
+              },
+            });
+          }
+          setContextMenu({ x: e.clientX, y: e.clientY, items });
+          setShowGroupNameInput(false);
+          setGroupNameInput("");
+        }}
         onClick={(e) => {
           // Clear selections only when clicking the canvas background directly
           if (e.target === e.currentTarget) {
@@ -2024,25 +2263,57 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             zIndex: isDraggingNode ? 200 : 2,
           }}
         >
+          {/* Visual group boxes */}
+          {jobGroups.map((group) => {
+            const positions = group.jobIds.map((id) => nodePositions[id]).filter(Boolean);
+            if (positions.length === 0) return null;
+            const minX = Math.min(...positions.map((p) => p.x)) - 24;
+            const maxX = Math.max(...positions.map((p) => p.x + NODE_W)) + 24;
+            const minY = Math.min(...positions.map((p) => p.y)) - 24;
+            const maxY = Math.max(...positions.map((p) => p.y + NODE_H)) + 24;
+            return (
+              <div key={`group-box-${group.id}`} style={{ position: "absolute", left: minX, top: minY, width: maxX - minX, height: maxY - minY, border: "1px solid #2a2a2a", borderRadius: 8, backgroundColor: "#0f0f0f80", pointerEvents: "none" }}>
+                <span style={{ position: "absolute", top: -12, left: 12, backgroundColor: "#0f0f0f", padding: "0 6px", color: "#4B5563", fontSize: 9, fontFamily: font, whiteSpace: "nowrap" }}>{group.name}</span>
+              </div>
+            );
+          })}
+
+          {/* Selection box */}
+          {selectionBox && (() => {
+            const x = Math.min(selectionBox.startX, selectionBox.currentX);
+            const y = Math.min(selectionBox.startY, selectionBox.currentY);
+            const w = Math.abs(selectionBox.currentX - selectionBox.startX);
+            const h = Math.abs(selectionBox.currentY - selectionBox.startY);
+            if (w < 2 && h < 2) return null;
+            return (
+              <div style={{ position: "absolute", left: x, top: y, width: w, height: h, border: "1px solid rgba(16, 185, 129, 0.5)", backgroundColor: "rgba(16, 185, 129, 0.06)", pointerEvents: "none", borderRadius: 2 }} />
+            );
+          })()}
+
           {jobs.map((job) => {
             const pos = nodePositions[job.id] ?? { x: 0, y: 0 };
             const isSelected = job.id === canvasModalJobId;
+            const isMultiSelected = selectedJobIds.has(job.id);
             const isConnectSource = connectingMode?.sourceId === job.id;
             const isHovered = hoveredNodeId === job.id;
             const isRunning = runningJobIds.has(job.id);
             const isDraggingThis = dragging?.id === job.id && isDraggingNode;
+            const isInHoveredGroup = hoveredGroupId ? (jobGroups.find((g) => g.id === hoveredGroupId)?.jobIds.includes(job.id) ?? false) : false;
             let borderColor = "#2a2a2a";
             if (isDraggingThis && dragDeleteHover) borderColor = "#EF4444";
             else if (isDraggingThis) borderColor = "#FAFAFA";
+            else if (isMultiSelected) borderColor = "#10B981";
             else if (isRunning) borderColor = "#10B981";
             else if (isSelected) borderColor = "#10B981";
             else if (isConnectSource) borderColor = connectingMode?.type === "success" ? "#10B981" : "#EF4444";
             else if (connectingMode && isHovered) borderColor = connectingMode.type === "success" ? "#10B981" : "#EF4444";
 
-            // Hover/route node highlighting
+            // Hover/route/group node highlighting
             let nodeOpacity = 1;
             if (isDraggingThis && dragDeleteHover) {
               nodeOpacity = 0.5;
+            } else if (hoveredGroupId && !isDraggingThis && !isSelected && !connectingMode) {
+              nodeOpacity = isInHoveredGroup ? 1 : 0.15;
             } else if (hoverConnectedNodes && !isDraggingThis && !isSelected && !connectingMode) {
               nodeOpacity = hoverConnectedNodes.has(job.id) ? 1 : 0.15;
             } else if (routeState && !isDraggingThis && !isSelected && !connectingMode) {
@@ -2186,6 +2457,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             position: "absolute",
             top: 16,
             left: 16,
+            zIndex: 10,
             backgroundColor: "#141414",
             border: "1px solid #2a2a2a",
             borderRadius: 9999,
@@ -2196,7 +2468,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             pointerEvents: "none",
           }}
         >
-          <span style={{ color: "#10B981" }}>&gt; </span>
+          <span style={{ color: "#10B981" }}>&gt;_ </span>
           <span style={{ color: "#FAFAFA" }}>quant</span>
         </div>
 
@@ -2207,6 +2479,7 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
             top: 16,
             left: "50%",
             transform: "translateX(-50%)",
+            zIndex: 10,
             backgroundColor: "#141414",
             border: "1px solid #2a2a2a",
             borderRadius: 9999,
@@ -2228,46 +2501,126 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
           >
             + new job
           </button>
-          {/* on success */}
-          <button
-            onClick={() => setConnectingMode(connectingMode?.type === "success" ? null : { type: "success" })}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "4px 10px",
-              fontFamily: font,
-              fontSize: 10,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              whiteSpace: "nowrap",
-              color: connectingMode?.type === "success" ? "#FAFAFA" : "#10B981",
-            }}
-          >
-            <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", backgroundColor: "#10B981" }} />
-            on success
-          </button>
-          {/* on failure */}
-          <button
-            onClick={() => setConnectingMode(connectingMode?.type === "failure" ? null : { type: "failure" })}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "4px 10px",
-              fontFamily: font,
-              fontSize: 10,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              whiteSpace: "nowrap",
-              color: connectingMode?.type === "failure" ? "#FAFAFA" : "#EF4444",
-            }}
-          >
-            <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", backgroundColor: "#EF4444" }} />
-            on failure
-          </button>
+          {/* triggers dropdown */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => { setTriggerDropdownOpen((v) => !v); }}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "4px 10px",
+                fontFamily: font,
+                fontSize: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                whiteSpace: "nowrap",
+                color: connectingMode ? "#FAFAFA" : "#6B7280",
+              }}
+              onMouseEnter={(e) => { if (!connectingMode) e.currentTarget.style.color = "#FAFAFA"; }}
+              onMouseLeave={(e) => { if (!connectingMode) e.currentTarget.style.color = "#6B7280"; }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+              </svg>
+              {connectingMode ? `trigger: ${connectingMode.type}` : "triggers"}
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {triggerDropdownOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  marginTop: 6,
+                  backgroundColor: "#1a1a1a",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: 6,
+                  padding: "4px 0",
+                  minWidth: 140,
+                  zIndex: 9999,
+                  fontFamily: font,
+                  fontSize: 11,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setConnectingMode(connectingMode?.type === "success" ? null : { type: "success" });
+                    setTriggerDropdownOpen(false);
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    width: "100%", padding: "6px 12px",
+                    background: connectingMode?.type === "success" ? "#2a2a2a" : "none",
+                    border: "none", cursor: "pointer",
+                    color: "#10B981", textAlign: "left", fontSize: 11,
+                    fontFamily: font,
+                  }}
+                  onMouseEnter={(e) => { if (connectingMode?.type !== "success") e.currentTarget.style.backgroundColor = "#222"; }}
+                  onMouseLeave={(e) => { if (connectingMode?.type !== "success") e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#10B981", flexShrink: 0 }} />
+                  on success
+                  {connectingMode?.type === "success" && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "auto" }}>
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setConnectingMode(connectingMode?.type === "failure" ? null : { type: "failure" });
+                    setTriggerDropdownOpen(false);
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    width: "100%", padding: "6px 12px",
+                    background: connectingMode?.type === "failure" ? "#2a2a2a" : "none",
+                    border: "none", cursor: "pointer",
+                    color: "#EF4444", textAlign: "left", fontSize: 11,
+                    fontFamily: font,
+                  }}
+                  onMouseEnter={(e) => { if (connectingMode?.type !== "failure") e.currentTarget.style.backgroundColor = "#222"; }}
+                  onMouseLeave={(e) => { if (connectingMode?.type !== "failure") e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#EF4444", flexShrink: 0 }} />
+                  on failure
+                  {connectingMode?.type === "failure" && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "auto" }}>
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </button>
+                {connectingMode && (
+                  <>
+                    <div style={{ borderTop: "1px solid #2a2a2a", margin: "4px 0" }} />
+                    <button
+                      onClick={() => {
+                        setConnectingMode(null);
+                        setTriggerDropdownOpen(false);
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        width: "100%", padding: "6px 12px",
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "#6B7280", textAlign: "left", fontSize: 11,
+                        fontFamily: font,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#222"; e.currentTarget.style.color = "#FAFAFA"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#6B7280"; }}
+                    >
+                      cancel
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           {/* separator */}
           <div style={{ width: 1, height: 16, backgroundColor: "#2a2a2a", margin: "0 4px" }} />
           {/* auto-layout */}
@@ -2344,13 +2697,253 @@ export function JobsView({ jobs, onCreateJob, onEditJob, onRefreshJobs }: Props)
 
         {/* Canvas modal */}
         {renderCanvasModal()}
+
+        {/* Context menu */}
+        {contextMenu && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              left: contextMenu.x,
+              top: contextMenu.y,
+              backgroundColor: "#1a1a1a",
+              border: "1px solid #2a2a2a",
+              borderRadius: 6,
+              padding: 4,
+              zIndex: 2000,
+              minWidth: 160,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+              fontFamily: font,
+            }}
+          >
+            {contextMenu.items.map((item, i) => (
+              <button
+                key={i}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  item.action();
+                  if (item.label !== "Create Group") {
+                    setContextMenu(null);
+                  }
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  background: "none",
+                  border: "none",
+                  color: "#FAFAFA",
+                  fontSize: 11,
+                  fontFamily: font,
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                  borderRadius: 4,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#2a2a2a")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              >
+                {item.label}
+              </button>
+            ))}
+            {showGroupNameInput && (
+              <div style={{ padding: "6px 12px" }}>
+                <input
+                  autoFocus
+                  value={groupNameInput}
+                  onChange={(e) => setGroupNameInput(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && groupNameInput.trim()) {
+                      try {
+                        await api.createJobGroup({ name: groupNameInput.trim(), jobIds: [...selectedJobIds], workspaceId: activeWorkspaceId });
+                        onRefreshJobGroups();
+                        setContextMenu(null);
+                        setShowGroupNameInput(false);
+                        setGroupNameInput("");
+                        setSelectedJobIds(new Set());
+                      } catch (err) { console.error("failed to create group:", err); }
+                    }
+                    if (e.key === "Escape") { setContextMenu(null); setShowGroupNameInput(false); setGroupNameInput(""); }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  placeholder="group name..."
+                  style={{
+                    width: "100%",
+                    backgroundColor: "#111111",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: 4,
+                    color: "#FAFAFA",
+                    fontSize: 11,
+                    fontFamily: font,
+                    padding: "4px 8px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderGroupsSidebar() {
+    const groupedJobIds = new Set(jobGroups.flatMap((g) => g.jobIds));
+    const ungroupedJobs = jobs.filter((j) => !groupedJobIds.has(j.id));
+
+    return (
+      <div style={{ display: "flex", flexShrink: 0, position: "relative" }}>
+      <div
+        style={{
+          width: groupsSidebarWidth,
+          backgroundColor: "#0A0A0A",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          flexShrink: 0,
+          fontFamily: font,
+        }}
+      >
+        <div style={{ padding: "12px 14px 8px", color: "#4B5563", fontSize: 10, fontWeight: 500, letterSpacing: 0.5 }}>
+          GROUPS
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+          {jobGroups.map((group) => {
+            const isExpanded = expandedGroups.has(group.id);
+            const groupJobs = group.jobIds.map((id) => jobs.find((j) => j.id === id)).filter(Boolean) as Job[];
+            return (
+              <div key={group.id}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 14px",
+                    cursor: "pointer",
+                    color: hoveredGroupId === group.id ? "#FAFAFA" : "#9CA3AF",
+                    fontSize: 11,
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={() => setHoveredGroupId(group.id)}
+                  onMouseLeave={() => setHoveredGroupId(null)}
+                  onClick={() => {
+                    focusOnGroup(group);
+                  }}
+                >
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.id)) next.delete(group.id); else next.add(group.id);
+                        return next;
+                      });
+                    }}
+                    style={{ fontSize: 8, display: "inline-block", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", width: 10, textAlign: "center" }}
+                  >
+                    &#9654;
+                  </span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.name}</span>
+                  <span style={{ color: "#4B5563", fontSize: 9 }}>{groupJobs.length}</span>
+                </div>
+                {isExpanded && groupJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    style={{
+                      padding: "4px 14px 4px 30px",
+                      cursor: "pointer",
+                      color: hoveredNodeId === job.id ? "#FAFAFA" : runningJobIds.has(job.id) ? "#FAFAFA" : "#6B7280",
+                      fontSize: 10,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      transition: "color 0.15s",
+                    }}
+                    onMouseEnter={() => setHoveredNodeId(job.id)}
+                    onMouseLeave={() => setHoveredNodeId(null)}
+                    onClick={() => focusOnJob(job.id)}
+                  >
+                    {job.name}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* Ungrouped section */}
+          {ungroupedJobs.length > 0 && (
+            <div>
+              <div style={{ height: 1, backgroundColor: "#2a2a2a", margin: "4px 14px" }} />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 14px",
+                  cursor: "pointer",
+                  color: "#6B7280",
+                  fontSize: 11,
+                }}
+                onClick={() => {
+                  setExpandedGroups((prev) => {
+                    const next = new Set(prev);
+                    if (next.has("__ungrouped__")) next.delete("__ungrouped__"); else next.add("__ungrouped__");
+                    return next;
+                  });
+                }}
+              >
+                <span
+                  style={{ fontSize: 8, display: "inline-block", transform: expandedGroups.has("__ungrouped__") ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", width: 10, textAlign: "center" }}
+                >
+                  &#9654;
+                </span>
+                <span style={{ flex: 1 }}>ungrouped</span>
+                <span style={{ color: "#4B5563", fontSize: 9 }}>{ungroupedJobs.length}</span>
+              </div>
+              {expandedGroups.has("__ungrouped__") && ungroupedJobs.map((job) => (
+                <div
+                  key={job.id}
+                  style={{
+                    padding: "4px 14px 4px 30px",
+                    cursor: "pointer",
+                    color: hoveredNodeId === job.id ? "#FAFAFA" : runningJobIds.has(job.id) ? "#FAFAFA" : "#6B7280",
+                    fontSize: 10,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={() => setHoveredNodeId(job.id)}
+                  onMouseLeave={() => setHoveredNodeId(null)}
+                  onClick={() => focusOnJob(job.id)}
+                >
+                  {job.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Resize handle */}
+      <div
+        onMouseDown={(e) => { e.preventDefault(); setResizingSidebar(true); }}
+        style={{
+          width: 4,
+          cursor: "col-resize",
+          backgroundColor: resizingSidebar ? "#10B981" : "transparent",
+          borderRight: "1px solid #2a2a2a",
+          transition: "background-color 0.15s",
+        }}
+        onMouseEnter={(e) => { if (!resizingSidebar) e.currentTarget.style.backgroundColor = "#333"; }}
+        onMouseLeave={(e) => { if (!resizingSidebar) e.currentTarget.style.backgroundColor = "transparent"; }}
+      />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen" style={{ backgroundColor: "#0A0A0A", fontFamily: font }}>
+    <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A", fontFamily: font }}>
       <style>{pulseKeyframes}</style>
+      {renderGroupsSidebar()}
       {renderCanvasView()}
     </div>
   );
