@@ -22,6 +22,8 @@ type Session struct {
 	SkipPermissions bool
 	Model           string
 	ExtraCliArgs    string
+	WorkspaceID     string
+	NoFlicker       bool
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	LastActiveAt    time.Time

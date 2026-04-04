@@ -7,7 +7,7 @@ export function BrowseDirectory():Promise<string>;
 
 export function GetRepo(arg1:string):Promise<dto.RepoResponse>;
 
-export function ListRepos():Promise<Array<dto.RepoResponse>>;
+export function ListReposByWorkspace(arg1:string):Promise<Array<dto.RepoResponse>>;
 
 export function OnShutdown(arg1:context.Context):Promise<void>;
 

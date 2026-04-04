@@ -266,6 +266,23 @@ export function TerminalPane({
     return () => observer.disconnect();
   }, [session.id]);
 
+  // Listen for refit events (e.g. after session restart)
+  useEffect(() => {
+    const handleRefit = () => {
+      if (fitAddonRef.current && termRef.current) {
+        try {
+          fitAddonRef.current.fit();
+          const { rows, cols } = termRef.current;
+          api.resizeTerminal(sessionIdRef.current, rows, cols).catch(() => {});
+        } catch {
+          // Ignore fit errors during disposal.
+        }
+      }
+    };
+    window.addEventListener("terminal:refit", handleRefit);
+    return () => window.removeEventListener("terminal:refit", handleRefit);
+  }, []);
+
   return (
     <div ref={wrapperRef} className="flex-1 min-h-0 min-w-0" style={{ position: "relative" }}>
       <div

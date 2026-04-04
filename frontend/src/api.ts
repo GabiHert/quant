@@ -9,6 +9,8 @@ import type {
   JobRun,
   Agent,
   SkillInfo,
+  Workspace,
+  JobGroup,
   CreateRepoRequest,
   CreateTaskRequest,
   CreateSessionRequest,
@@ -16,6 +18,10 @@ import type {
   UpdateJobRequest,
   CreateAgentRequest,
   UpdateAgentRequest,
+  CreateWorkspaceRequest,
+  UpdateWorkspaceRequest,
+  CreateJobGroupRequest,
+  UpdateJobGroupRequest,
 } from "./types";
 
 // These functions map to Go controller methods bound via Wails.
@@ -45,8 +51,8 @@ export function openRepo(req: CreateRepoRequest): Promise<Repo> {
   return callGo(PKG, REPO_CTRL, "OpenRepo", req);
 }
 
-export function listRepos(): Promise<Repo[]> {
-  return callGo(PKG, REPO_CTRL, "ListRepos");
+export function listReposByWorkspace(workspaceId: string): Promise<Repo[]> {
+  return callGo(PKG, REPO_CTRL, "ListReposByWorkspace", workspaceId);
 }
 
 export function getRepo(id: string): Promise<Repo> {
@@ -103,6 +109,14 @@ const SESSION_CTRL = "sessionController";
 
 export function createSession(req: CreateSessionRequest): Promise<Session> {
   return callGo(PKG, SESSION_CTRL, "CreateSession", req);
+}
+
+export function startAssistantSession(model: string): Promise<Session> {
+  return callGo(PKG, SESSION_CTRL, "StartAssistantSession", model);
+}
+
+export function quantiChat(convID: string, message: string, model: string): Promise<string> {
+  return callGo(PKG, SESSION_CTRL, "QuantiChat", convID, message, model);
 }
 
 export function startSession(id: string, rows: number, cols: number): Promise<void> {
@@ -249,6 +263,14 @@ export function sendNotification(title: string, message: string): Promise<void> 
   return callGo(PKG, CONFIG_CTRL, "SendNotification", title, message);
 }
 
+export function getQuantiFile(name: string): Promise<string> {
+  return callGo(PKG, CONFIG_CTRL, "GetQuantiFile", name);
+}
+
+export function saveQuantiFile(name: string, content: string): Promise<void> {
+  return callGo(PKG, CONFIG_CTRL, "SaveQuantiFile", name, content);
+}
+
 // --- Jobs ---
 
 const JOB_CTRL = "jobController";
@@ -327,4 +349,48 @@ export function listAvailableSkills(): Promise<SkillInfo[]> {
 
 export function listAvailableMcpServers(): Promise<string[]> {
   return callGo(PKG, AGENT_CTRL, "ListAvailableMcpServers");
+}
+
+// --- Job Groups ---
+
+const JOB_GROUP_CTRL = "jobGroupController";
+
+export function createJobGroup(req: CreateJobGroupRequest): Promise<JobGroup> {
+  return callGo(PKG, JOB_GROUP_CTRL, "CreateJobGroup", req);
+}
+
+export function updateJobGroup(req: UpdateJobGroupRequest): Promise<JobGroup> {
+  return callGo(PKG, JOB_GROUP_CTRL, "UpdateJobGroup", req);
+}
+
+export function deleteJobGroup(id: string): Promise<void> {
+  return callGo(PKG, JOB_GROUP_CTRL, "DeleteJobGroup", id);
+}
+
+export function listJobGroupsByWorkspace(workspaceId: string): Promise<JobGroup[]> {
+  return callGo(PKG, JOB_GROUP_CTRL, "ListJobGroupsByWorkspace", workspaceId);
+}
+
+// --- Workspaces ---
+
+const WORKSPACE_CTRL = "workspaceController";
+
+export function createWorkspace(req: CreateWorkspaceRequest): Promise<Workspace> {
+  return callGo(PKG, WORKSPACE_CTRL, "CreateWorkspace", req);
+}
+
+export function updateWorkspace(req: UpdateWorkspaceRequest): Promise<Workspace> {
+  return callGo(PKG, WORKSPACE_CTRL, "UpdateWorkspace", req);
+}
+
+export function deleteWorkspace(id: string): Promise<void> {
+  return callGo(PKG, WORKSPACE_CTRL, "DeleteWorkspace", id);
+}
+
+export function getWorkspace(id: string): Promise<Workspace> {
+  return callGo(PKG, WORKSPACE_CTRL, "GetWorkspace", id);
+}
+
+export function listWorkspaces(): Promise<Workspace[]> {
+  return callGo(PKG, WORKSPACE_CTRL, "ListWorkspaces");
 }

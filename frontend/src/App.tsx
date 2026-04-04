@@ -7,6 +7,8 @@ import type {
   Shortcut,
   Job,
   Agent,
+  Workspace,
+  JobGroup,
   CreateRepoRequest,
   CreateTaskRequest,
   CreateSessionRequest,
@@ -36,6 +38,7 @@ import { JobsView } from "./components/JobsView";
 import { CreateJobModal } from "./components/CreateJobModal";
 import AgentsView from "./components/AgentsView";
 import { CreateAgentModal } from "./components/CreateAgentModal";
+import { QuantAssistant } from "./components/QuantAssistant";
 
 type ModalState =
   | { type: "none" }
@@ -64,11 +67,13 @@ function App() {
   const [sessionsByTask, setSessionsByTask] = useState<Record<string, Session[]>>({});
   const [actionsBySession, setActionsBySession] = useState<Record<string, Action[]>>({});
 
-  // Tab model: multiple open tabs, one active
+  // Tab model: multiple open tabs, one active (per workspace)
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   // selectedSessionId tracks sidebar highlight (may differ from active tab)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  // Store tabs per workspace so they're preserved when switching
+  const tabsByWorkspace = useRef<Record<string, { openTabIds: string[]; activeTabId: string | null; selectedSessionId: string | null }>>({});
 
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [transitionStatus, setTransitionStatus] = useState<Record<string, "starting" | "stopping" | "resuming">>({});
@@ -81,6 +86,18 @@ function App() {
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(
+    () => localStorage.getItem("quant:activeWorkspaceId") || "default"
+  );
+  const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = useState(false);
+  const [quantiConvID, setQuantiConvID] = useState<string>("");
+  const [quantiModel, setQuantiModel] = useState<string>("claude-sonnet-4-6");
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [jobGroups, setJobGroups] = useState<JobGroup[]>([]);
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null);
   const [diffSession, setDiffSession] = useState<{ id: string; name: string } | null>(null);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [commitMessagePrefix, setCommitMessagePrefix] = useState("");
@@ -124,16 +141,16 @@ function App() {
 
   // --- data fetching ---
 
-  const fetchRepos = useCallback(async () => {
+  const fetchRepos = useCallback(async (wsId?: string) => {
     try {
-      const list = await api.listRepos();
+      const list = await api.listReposByWorkspace(wsId ?? activeWorkspaceId);
       setRepos(list ?? []);
       return list ?? [];
     } catch (err) {
       console.error("failed to list repos:", err);
       return [];
     }
-  }, []);
+  }, [activeWorkspaceId]);
 
   const fetchTasksForRepo = useCallback(async (repoId: string) => {
     try {
@@ -205,11 +222,31 @@ function App() {
     }
   }, []);
 
+  const fetchWorkspaces = useCallback(async () => {
+    try {
+      const list = await api.listWorkspaces();
+      setWorkspaces(list ?? []);
+    } catch (err) {
+      console.error("failed to list workspaces:", err);
+    }
+  }, []);
+
+  const fetchJobGroups = useCallback(async () => {
+    try {
+      const list = await api.listJobGroupsByWorkspace(activeWorkspaceId);
+      setJobGroups(list ?? []);
+    } catch (err) {
+      console.error("failed to list job groups:", err);
+    }
+  }, [activeWorkspaceId]);
+
   // initial load
   const loadAll = useCallback(async () => {
     fetchShortcuts();
     fetchJobs();
     fetchAgents();
+    fetchWorkspaces();
+    fetchJobGroups();
     const repoList = await fetchRepos();
     for (const repo of repoList) {
       const tasks = await fetchTasksForRepo(repo.id);
@@ -218,11 +255,77 @@ function App() {
         await fetchSessionsForTask(task.id);
       }
     }
-  }, [fetchShortcuts, fetchJobs, fetchAgents, fetchRepos, fetchTasksForRepo, fetchSessionsForRepo, fetchSessionsForTask]);
+  }, [fetchShortcuts, fetchJobs, fetchAgents, fetchWorkspaces, fetchJobGroups, fetchRepos, fetchTasksForRepo, fetchSessionsForRepo, fetchSessionsForTask]);
 
   useEffect(() => {
     loadAll();
+    // Set up Quanti directory (writes CLAUDE.md, memory files, runs background consolidation)
+    // convID starts empty — first message creates a new Claude conversation,
+    // then the quanti:session event gives us the real conversation ID for --resume
+    api.getConfig()
+      .then((cfg) => {
+        const model = cfg.assistantModel || "claude-sonnet-4-6";
+        setQuantiModel(model);
+        return api.startAssistantSession(model);
+      })
+      .catch((err) => console.error("failed to start quanti:", err));
   }, [loadAll]);
+
+
+  // Persist active workspace to localStorage and reload data
+  const prevWorkspaceId = useRef(activeWorkspaceId);
+  useEffect(() => {
+    localStorage.setItem("quant:activeWorkspaceId", activeWorkspaceId);
+
+    // Save current tabs for the previous workspace
+    if (prevWorkspaceId.current !== activeWorkspaceId) {
+      tabsByWorkspace.current[prevWorkspaceId.current] = {
+        openTabIds,
+        activeTabId,
+        selectedSessionId,
+      };
+      // Restore tabs for the new workspace (or clear)
+      const saved = tabsByWorkspace.current[activeWorkspaceId];
+      if (saved) {
+        setOpenTabIds(saved.openTabIds);
+        setActiveTabId(saved.activeTabId);
+        setSelectedSessionId(saved.selectedSessionId);
+      } else {
+        setOpenTabIds([]);
+        setActiveTabId(null);
+        setSelectedSessionId(null);
+      }
+      prevWorkspaceId.current = activeWorkspaceId;
+    }
+
+    // Reload repos (which are workspace-scoped) when workspace changes
+    (async () => {
+      const repoList = await fetchRepos(activeWorkspaceId);
+      for (const repo of repoList) {
+        const tasks = await fetchTasksForRepo(repo.id);
+        await fetchSessionsForRepo(repo.id);
+        for (const task of tasks) {
+          await fetchSessionsForTask(task.id);
+        }
+      }
+    })();
+    fetchJobs();
+    fetchAgents();
+    fetchJobGroups();
+  }, [activeWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close workspace dropdown when clicking outside
+  useEffect(() => {
+    if (!workspaceDropdownOpen) {
+      setCreatingWorkspace(false);
+      setNewWorkspaceName("");
+      setDeletingWorkspaceId(null);
+      return;
+    }
+    const handleClick = () => setWorkspaceDropdownOpen(false);
+    const timer = setTimeout(() => document.addEventListener("click", handleClick), 0);
+    return () => { clearTimeout(timer); document.removeEventListener("click", handleClick); };
+  }, [workspaceDropdownOpen]);
 
 
   // poll sessions every 3s
@@ -348,6 +451,8 @@ function App() {
             if (!cfg.notifications) return;
 
             const session = findSession(id, sessionsByRepo, sessionsByTask);
+            // Skip notifications for the assistant session
+            if (session?.name === "__quanti__") return;
             const name = session?.name ?? id;
 
             // In-app toast notification
@@ -454,6 +559,7 @@ function App() {
   async function handleOpenRepo(req: CreateRepoRequest) {
     try {
       setError(null);
+      req.workspaceId = activeWorkspaceId;
       await api.openRepo(req);
       setModal({ type: "none" });
       await loadAll();
@@ -479,6 +585,7 @@ function App() {
     creatingSessionRef.current = true;
     try {
       setError(null);
+      req.workspaceId = activeWorkspaceId;
       const session = await api.createSession(req);
       setModal({ type: "none" });
       await fetchSessionsForRepo(req.repoId);
@@ -517,6 +624,26 @@ function App() {
       setTransitionStatus((prev) => ({ ...prev, [id]: "resuming" }));
       await api.resumeSession(id, rows, cols);
       clearTransition(id);
+    } catch (err) {
+      setError(String(err));
+      setTransitionStatus((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  }
+
+  async function handleRestart(id: string, rows: number, cols: number) {
+    try {
+      setError(null);
+      setTransitionStatus((prev) => ({ ...prev, [id]: "stopping" }));
+      await api.stopSession(id);
+      // Small delay to let the process fully exit before respawning
+      await new Promise((r) => setTimeout(r, 500));
+      setTransitionStatus((prev) => ({ ...prev, [id]: "resuming" }));
+      await api.resumeSession(id, rows, cols);
+      clearTransition(id);
+      // Signal terminal panes to refit after restart
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("terminal:refit"));
+      }, 500);
     } catch (err) {
       setError(String(err));
       setTransitionStatus((prev) => { const n = { ...prev }; delete n[id]; return n; });
@@ -598,6 +725,7 @@ function App() {
       model: "",
       extraCliArgs: "",
       directoryOverride: directory,
+      workspaceId: activeWorkspaceId,
     };
     const termSession = await api.createSession(req);
     setEmbeddedTerminalMap(prev => ({ ...prev, [parentSession.id]: termSession.id }));
@@ -786,19 +914,23 @@ function App() {
     }
   }
 
-  // Filter out embedded terminal sessions from sidebar
+  // Filter out embedded terminal sessions and filter by active workspace
   const embeddedIds = new Set(Object.values(embeddedTerminalMap));
-  const filterEmbedded = (sessions: Session[]) =>
-    sessions.filter(s => !embeddedIds.has(s.id));
+  const filterSessions = (sessions: Session[]) =>
+    sessions.filter(s => !embeddedIds.has(s.id) && s.workspaceId === activeWorkspaceId && s.name !== "__quanti__");
 
   const filteredSessionsByRepo: Record<string, Session[]> = {};
   for (const [repoId, sessions] of Object.entries(sessionsByRepo)) {
-    filteredSessionsByRepo[repoId] = filterEmbedded(sessions);
+    filteredSessionsByRepo[repoId] = filterSessions(sessions);
   }
   const filteredSessionsByTask: Record<string, Session[]> = {};
   for (const [taskId, sessions] of Object.entries(sessionsByTask)) {
-    filteredSessionsByTask[taskId] = filterEmbedded(sessions);
+    filteredSessionsByTask[taskId] = filterSessions(sessions);
   }
+
+  // Filter jobs and agents by active workspace
+  const filteredJobs = jobs.filter(j => j.workspaceId === activeWorkspaceId);
+  const filteredAgents = agents.filter(a => a.workspaceId === activeWorkspaceId);
 
   // Build tab data for TabBar
   const tabs = openTabIds
@@ -819,6 +951,22 @@ function App() {
     : "";
 
   const currentView: View = view;
+
+  const renderQuantiOverlay = () => (
+    <div style={{
+      position: "fixed",
+      bottom: 24,
+      right: 60,
+      zIndex: 100,
+      display: assistantOpen ? "block" : "none",
+    }}>
+      <QuantAssistant
+        convID={quantiConvID}
+        model={quantiModel}
+        onMinimize={() => setAssistantOpen(false)}
+      />
+    </div>
+  );
 
   const renderIconStrip = () => {
     const items: { view: string; label: string; onClick: () => void; icon: React.ReactNode }[] = [
@@ -918,6 +1066,226 @@ function App() {
             </div>
           ))}
         </div>
+        <div style={{ flex: 1 }} />
+        {/* Assistant toggle */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <button
+            onClick={() => setAssistantOpen((v) => !v)}
+            style={{
+              width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+              background: "none", border: "none", cursor: "pointer",
+              color: assistantOpen ? "#FAFAFA" : "#6B7280",
+              borderRight: assistantOpen ? "2px solid #10B981" : "2px solid transparent",
+            }}
+            onMouseEnter={(e) => { if (!assistantOpen) e.currentTarget.style.color = "#FAFAFA"; }}
+            onMouseLeave={(e) => { if (!assistantOpen) e.currentTarget.style.color = "#6B7280"; }}
+            title="Quant Assistant"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+        </div>
+        {/* Workspace selector */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
+          <button
+            onClick={() => setWorkspaceDropdownOpen((v) => !v)}
+            style={{
+              width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+              background: "none", border: "none", cursor: "pointer",
+              color: workspaceDropdownOpen ? "#FAFAFA" : "#6B7280",
+              borderRight: workspaceDropdownOpen ? "2px solid #10B981" : "2px solid transparent",
+            }}
+            onMouseEnter={(e) => { if (!workspaceDropdownOpen) e.currentTarget.style.color = "#FAFAFA"; }}
+            onMouseLeave={(e) => { if (!workspaceDropdownOpen) e.currentTarget.style.color = "#6B7280"; }}
+            title={`Workspace: ${workspaces.find(w => w.id === activeWorkspaceId)?.name ?? "Default"}`}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+            </svg>
+          </button>
+          {workspaceDropdownOpen && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                right: 44,
+                bottom: 0,
+                backgroundColor: "#1a1a1a",
+                border: "1px solid #2a2a2a",
+                borderRadius: 6,
+                padding: "4px 0",
+                minWidth: 180,
+                zIndex: 9999,
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 12,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div style={{ padding: "4px 12px", color: "#6B7280", fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>
+                Workspaces
+              </div>
+              {workspaces.map((ws) => {
+                const isActive = ws.id === activeWorkspaceId;
+                const isDeletable = !isActive && ws.id !== "default";
+                const isConfirmingDelete = deletingWorkspaceId === ws.id;
+
+                if (isConfirmingDelete) {
+                  return (
+                    <div key={ws.id} style={{ padding: "6px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ color: "#FAFAFA", marginBottom: 6 }}>
+                        Delete "{ws.name}"?
+                        <br /><span style={{ color: "#6B7280" }}>All items will be deleted.</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              await api.deleteWorkspace(ws.id);
+                              await fetchWorkspaces();
+                              setDeletingWorkspaceId(null);
+                            } catch (err) {
+                              console.error("failed to delete workspace:", err);
+                            }
+                          }}
+                          style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid #EF4444",
+                            backgroundColor: "#EF4444", color: "#fff", cursor: "pointer",
+                            fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+                          }}
+                        >Delete</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeletingWorkspaceId(null); }}
+                          style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid #333",
+                            backgroundColor: "transparent", color: "#6B7280", cursor: "pointer",
+                            fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+                          }}
+                        >Cancel</button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={ws.id}
+                    style={{
+                      display: "flex", alignItems: "center",
+                      background: isActive ? "#2a2a2a" : "none",
+                    }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "#222"; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
+                  >
+                    <button
+                      onClick={() => {
+                        setActiveWorkspaceId(ws.id);
+                        setWorkspaceDropdownOpen(false);
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        flex: 1, padding: "6px 12px",
+                        background: "none", border: "none", cursor: "pointer",
+                        color: isActive ? "#10B981" : "#FAFAFA",
+                        textAlign: "left", fontSize: 12,
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                    >
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: isActive ? "#10B981" : "#444", flexShrink: 0 }} />
+                      {ws.name}
+                      {isActive && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "auto" }}>
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                    {isDeletable && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeletingWorkspaceId(ws.id); }}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 28, height: 28, flexShrink: 0,
+                          background: "none", border: "none", cursor: "pointer",
+                          color: "#6B7280", marginRight: 4,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "#EF4444"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "#6B7280"; }}
+                        title={`Delete ${ws.name}`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <div style={{ borderTop: "1px solid #2a2a2a", margin: "4px 0" }} />
+              {creatingWorkspace ? (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!newWorkspaceName.trim()) return;
+                    try {
+                      const ws = await api.createWorkspace({ name: newWorkspaceName.trim() });
+                      await fetchWorkspaces();
+                      setActiveWorkspaceId(ws.id);
+                      setCreatingWorkspace(false);
+                      setNewWorkspaceName("");
+                      setWorkspaceDropdownOpen(false);
+                    } catch (err) {
+                      console.error("failed to create workspace:", err);
+                    }
+                  }}
+                  style={{ padding: "4px 8px" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    autoFocus
+                    value={newWorkspaceName}
+                    onChange={(e) => setNewWorkspaceName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") { setCreatingWorkspace(false); setNewWorkspaceName(""); }
+                    }}
+                    placeholder="Workspace name..."
+                    style={{
+                      width: "100%", padding: "4px 8px",
+                      backgroundColor: "#111", border: "1px solid #333", borderRadius: 4,
+                      color: "#FAFAFA", fontSize: 12, outline: "none",
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = "#10B981"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = "#333"; }}
+                  />
+                </form>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCreatingWorkspace(true);
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", padding: "6px 12px",
+                    background: "none", border: "none", cursor: "pointer",
+                    color: "#6B7280", textAlign: "left", fontSize: 12,
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#FAFAFA"; e.currentTarget.style.backgroundColor = "#222"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "#6B7280"; e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  New workspace
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -926,10 +1294,13 @@ function App() {
     <>
       {modal.type === "createJob" && (
         <CreateJobModal
-          jobs={jobs}
+          jobs={filteredJobs}
+          agents={filteredAgents}
           onSubmit={async (req) => {
             try {
-              await api.createJob(req as CreateJobRequest);
+              const jobReq = req as CreateJobRequest;
+              jobReq.workspaceId = activeWorkspaceId;
+              await api.createJob(jobReq);
               setModal({ type: "none" });
               fetchJobs();
             } catch (err) {
@@ -941,7 +1312,8 @@ function App() {
       )}
       {modal.type === "editJob" && (
         <CreateJobModal
-          jobs={jobs}
+          jobs={filteredJobs}
+          agents={filteredAgents}
           editJob={modal.job}
           onSubmit={async (req) => {
             try {
@@ -958,7 +1330,9 @@ function App() {
       {modal.type === "createAgent" && (
         <CreateAgentModal
           onSubmit={async (req) => {
-            await api.createAgent(req as CreateAgentRequest);
+            const agentReq = req as CreateAgentRequest;
+            agentReq.workspaceId = activeWorkspaceId;
+            await api.createAgent(agentReq);
             setModal({ type: "none" });
             fetchAgents();
           }}
@@ -984,19 +1358,27 @@ function App() {
     </>
   );
 
-  // Settings and diff still do early returns (they have no long-lived state)
+  // Settings and diff wrap QuantAssistant so it stays mounted across all views
   if (view === "settings") {
-    return <Settings repos={repos} onBack={() => { fetchShortcuts(); setView("dashboard"); }} />;
+    return (
+      <>
+        {renderQuantiOverlay()}
+        <Settings repos={repos} onBack={() => { fetchShortcuts(); setView("dashboard"); }} />
+      </>
+    );
   }
 
   if (view === "diff" && diffSession) {
     return (
-      <DiffView
-        sessionId={diffSession.id}
-        sessionName={diffSession.name}
-        commitMessagePrefix={commitMessagePrefix}
-        onBack={() => setView("dashboard")}
-      />
+      <>
+        {renderQuantiOverlay()}
+        <DiffView
+          sessionId={diffSession.id}
+          sessionName={diffSession.name}
+          commitMessagePrefix={commitMessagePrefix}
+          onBack={() => setView("dashboard")}
+        />
+      </>
     );
   }
 
@@ -1004,13 +1386,19 @@ function App() {
   // (sessions/terminals keep running in the background)
   return (
     <>
+      {renderQuantiOverlay()}
+
       {view === "jobs" && (
         <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A", position: "absolute", top: 0, left: 0, zIndex: 20 }}>
           <JobsView
-            jobs={jobs}
+            jobs={filteredJobs}
+            agents={filteredAgents}
+            jobGroups={jobGroups}
+            activeWorkspaceId={activeWorkspaceId}
             onCreateJob={() => setModal({ type: "createJob" })}
             onEditJob={(job) => setModal({ type: "editJob", job })}
             onRefreshJobs={fetchJobs}
+            onRefreshJobGroups={fetchJobGroups}
           />
           {renderIconStrip()}
           {renderModals()}
@@ -1020,7 +1408,7 @@ function App() {
       {view === "agents" && (
         <div className="flex h-screen w-screen" style={{ backgroundColor: "#0A0A0A", position: "absolute", top: 0, left: 0, zIndex: 20 }}>
           <AgentsView
-            agents={agents}
+            agents={filteredAgents}
             onCreateAgent={() => setModal({ type: "createAgent" })}
             onEditAgent={(agent: Agent) => setModal({ type: "editAgent", agent })}
             onDeleteAgent={async (id: string) => {
@@ -1118,6 +1506,7 @@ function App() {
             task={activeTask}
             onStart={handleStart}
             onResume={handleResume}
+            onRestart={handleRestart}
             onUnarchive={handleUnarchiveSession}
             displayStatus={getDisplayStatus(activeSession.id, activeSession.status)}
             embeddedTerminalSession={activeEmbeddedTerminalSession}
@@ -1229,9 +1618,10 @@ function App() {
         <div
           style={{
             position: "fixed",
-            bottom: 20,
+            bottom: assistantOpen ? 608 : 20,
             right: 20,
             zIndex: 9999,
+            transition: "bottom 0.2s ease",
             display: "flex",
             flexDirection: "column",
             gap: 8,

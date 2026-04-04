@@ -20,31 +20,37 @@ import (
 type Injector struct {
 	db *sql.DB
 
-	agentPersistence   intAdapter.AgentPersistence
-	agentManager       appAdapter.AgentManager
-	agentController    intAdapter.AgentController
-	jobPersistence     intAdapter.JobPersistence
-	jobManager         appAdapter.JobManager
-	jobController      intAdapter.JobController
-	jobScheduler       appAdapter.JobScheduler
-	repoPersistence    intAdapter.RepoPersistence
-	taskPersistence    intAdapter.TaskPersistence
-	actionPersistence  intAdapter.ActionPersistence
-	sessionPersistence intAdapter.SessionPersistence
-	processManager     intAdapter.ProcessManager
-	worktreeManager    intAdapter.WorktreeManager
-	repoManager        appAdapter.RepoManager
-	taskManager        appAdapter.TaskManager
-	actionLogger       appAdapter.ActionLogger
-	sessionManager     appAdapter.SessionManager
-	configPersistence  intAdapter.ConfigPersistence
-	databaseManager    intAdapter.DatabaseManager
-	configManager      appAdapter.ConfigManager
-	repoController     intAdapter.RepoController
-	taskController     intAdapter.TaskController
-	actionController   intAdapter.ActionController
-	sessionController  intAdapter.SessionController
-	configController   intAdapter.ConfigController
+	agentPersistence     intAdapter.AgentPersistence
+	agentManager         appAdapter.AgentManager
+	agentController      intAdapter.AgentController
+	jobPersistence       intAdapter.JobPersistence
+	jobManager           appAdapter.JobManager
+	jobController        intAdapter.JobController
+	jobScheduler         appAdapter.JobScheduler
+	repoPersistence      intAdapter.RepoPersistence
+	taskPersistence      intAdapter.TaskPersistence
+	actionPersistence    intAdapter.ActionPersistence
+	sessionPersistence   intAdapter.SessionPersistence
+	processManager       intAdapter.ProcessManager
+	worktreeManager      intAdapter.WorktreeManager
+	repoManager          appAdapter.RepoManager
+	taskManager          appAdapter.TaskManager
+	actionLogger         appAdapter.ActionLogger
+	sessionManager       appAdapter.SessionManager
+	configPersistence    intAdapter.ConfigPersistence
+	databaseManager      intAdapter.DatabaseManager
+	configManager        appAdapter.ConfigManager
+	repoController       intAdapter.RepoController
+	taskController       intAdapter.TaskController
+	actionController     intAdapter.ActionController
+	sessionController    intAdapter.SessionController
+	configController     intAdapter.ConfigController
+	workspacePersistence intAdapter.WorkspacePersistence
+	workspaceManager     appAdapter.WorkspaceManager
+	workspaceController  intAdapter.WorkspaceController
+	jobGroupPersistence  intAdapter.JobGroupPersistence
+	jobGroupManager      appAdapter.JobGroupManager
+	jobGroupController   intAdapter.JobGroupController
 }
 
 // NewInjector creates a new dependency injector with the given database connection.
@@ -278,6 +284,36 @@ func (i *Injector) AgentController() intAdapter.AgentController {
 	return i.agentController
 }
 
+// WorkspacePersistence returns the singleton WorkspacePersistence instance.
+func (i *Injector) WorkspacePersistence() intAdapter.WorkspacePersistence {
+	if i.workspacePersistence == nil {
+		i.workspacePersistence = persistence.NewWorkspacePersistence(i.db)
+	}
+	return i.workspacePersistence
+}
+
+// WorkspaceManager returns the singleton WorkspaceManager service instance.
+func (i *Injector) WorkspaceManager() appAdapter.WorkspaceManager {
+	if i.workspaceManager == nil {
+		wp := i.WorkspacePersistence()
+		i.workspaceManager = service.NewWorkspaceManagerService(
+			wp, // FindWorkspace
+			wp, // SaveWorkspace
+			wp, // UpdateWorkspace
+			wp, // DeleteWorkspace
+		)
+	}
+	return i.workspaceManager
+}
+
+// WorkspaceController returns the singleton WorkspaceController instance.
+func (i *Injector) WorkspaceController() intAdapter.WorkspaceController {
+	if i.workspaceController == nil {
+		i.workspaceController = controller.NewWorkspaceController(i.WorkspaceManager())
+	}
+	return i.workspaceController
+}
+
 // JobPersistence returns the singleton JobPersistence instance.
 func (i *Injector) JobPersistence() intAdapter.JobPersistence {
 	if i.jobPersistence == nil {
@@ -325,4 +361,34 @@ func (i *Injector) JobController() intAdapter.JobController {
 		i.jobController = controller.NewJobController(i.JobManager())
 	}
 	return i.jobController
+}
+
+// JobGroupPersistence returns the singleton JobGroupPersistence instance.
+func (i *Injector) JobGroupPersistence() intAdapter.JobGroupPersistence {
+	if i.jobGroupPersistence == nil {
+		i.jobGroupPersistence = persistence.NewJobGroupPersistence(i.db)
+	}
+	return i.jobGroupPersistence
+}
+
+// JobGroupManager returns the singleton JobGroupManager service instance.
+func (i *Injector) JobGroupManager() appAdapter.JobGroupManager {
+	if i.jobGroupManager == nil {
+		gp := i.JobGroupPersistence()
+		i.jobGroupManager = service.NewJobGroupManagerService(
+			gp, // FindJobGroup
+			gp, // SaveJobGroup
+			gp, // UpdateJobGroup
+			gp, // DeleteJobGroup
+		)
+	}
+	return i.jobGroupManager
+}
+
+// JobGroupController returns the singleton JobGroupController instance.
+func (i *Injector) JobGroupController() intAdapter.JobGroupController {
+	if i.jobGroupController == nil {
+		i.jobGroupController = controller.NewJobGroupController(i.JobGroupManager())
+	}
+	return i.jobGroupController
 }

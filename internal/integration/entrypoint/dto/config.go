@@ -53,6 +53,7 @@ type SaveConfigRequest struct {
 	CliBinaryPath    string            `json:"cliBinaryPath"`
 	ExtraCliArgs     string            `json:"extraCliArgs"`
 	DefaultModel     string            `json:"defaultModel"`
+	AssistantModel   string            `json:"assistantModel"`
 	EnvVariables     map[string]string `json:"envVariables"`
 	CommandOverrides map[string]string `json:"commandOverrides"`
 }
@@ -99,6 +100,7 @@ type ConfigResponse struct {
 	CliBinaryPath    string            `json:"cliBinaryPath"`
 	ExtraCliArgs     string            `json:"extraCliArgs"`
 	DefaultModel     string            `json:"defaultModel"`
+	AssistantModel   string            `json:"assistantModel"`
 	EnvVariables     map[string]string `json:"envVariables"`
 	CommandOverrides map[string]string `json:"commandOverrides"`
 }
@@ -139,6 +141,7 @@ func ConfigResponseFromEntity(cfg entity.Config) ConfigResponse {
 		CliBinaryPath:         cfg.CliBinaryPath,
 		ExtraCliArgs:          cfg.ExtraCliArgs,
 		DefaultModel:          cfg.DefaultModel,
+		AssistantModel:        cfg.AssistantModel,
 		EnvVariables:          cfg.EnvVariables,
 		CommandOverrides:      cfg.CommandOverrides,
 	}
@@ -205,6 +208,7 @@ func (r SaveConfigRequest) ToEntity() entity.Config {
 		CliBinaryPath:         r.CliBinaryPath,
 		ExtraCliArgs:          r.ExtraCliArgs,
 		DefaultModel:          r.DefaultModel,
+		AssistantModel:        r.AssistantModel,
 		EnvVariables:          envVariables,
 		CommandOverrides:      commandOverrides,
 	}

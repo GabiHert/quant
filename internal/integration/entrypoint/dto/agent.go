@@ -17,6 +17,7 @@ type CreateAgentRequest struct {
 	EnvVariables   map[string]string `json:"envVariables"`
 	Boundaries     []string          `json:"boundaries"`
 	Skills         map[string]bool   `json:"skills"`
+	WorkspaceID    string            `json:"workspaceId"`
 }
 
 // UpdateAgentRequest represents the request payload for updating an existing agent.
@@ -32,6 +33,7 @@ type UpdateAgentRequest struct {
 	EnvVariables   map[string]string `json:"envVariables"`
 	Boundaries     []string          `json:"boundaries"`
 	Skills         map[string]bool   `json:"skills"`
+	WorkspaceID    string            `json:"workspaceId"`
 }
 
 // AgentResponse represents the response payload for agent data.
@@ -47,6 +49,7 @@ type AgentResponse struct {
 	EnvVariables   map[string]string `json:"envVariables"`
 	Boundaries     []string          `json:"boundaries"`
 	Skills         map[string]bool   `json:"skills"`
+	WorkspaceID    string            `json:"workspaceId"`
 	CreatedAt      string            `json:"createdAt"`
 	UpdatedAt      string            `json:"updatedAt"`
 }
@@ -71,6 +74,7 @@ func AgentResponseFromEntity(agent entity.Agent) AgentResponse {
 		EnvVariables:   agent.EnvVariables,
 		Boundaries:     agent.Boundaries,
 		Skills:         agent.Skills,
+		WorkspaceID:    agent.WorkspaceID,
 		CreatedAt:      agent.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:      agent.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}

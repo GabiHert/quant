@@ -172,6 +172,8 @@ func Run(assets embed.FS) error {
 	configCtrl := injector.ConfigController()
 	jobCtrl := injector.JobController()
 	agentCtrl := injector.AgentController()
+	workspaceCtrl := injector.WorkspaceController()
+	jobGroupCtrl := injector.JobGroupController()
 	processManager := injector.ProcessManager()
 
 	// Start MCP server for external AI tools to manage jobs.
@@ -206,6 +208,8 @@ func Run(assets embed.FS) error {
 			configCtrl.OnStartup(ctx)
 			jobCtrl.OnStartup(ctx)
 			agentCtrl.OnStartup(ctx)
+			workspaceCtrl.OnStartup(ctx)
+			jobGroupCtrl.OnStartup(ctx)
 		},
 		OnShutdown: func(ctx context.Context) {
 			sessionCtrl.OnShutdown(ctx)
@@ -215,6 +219,8 @@ func Run(assets embed.FS) error {
 			configCtrl.OnShutdown(ctx)
 			jobCtrl.OnShutdown(ctx)
 			agentCtrl.OnShutdown(ctx)
+			workspaceCtrl.OnShutdown(ctx)
+			jobGroupCtrl.OnShutdown(ctx)
 			jobScheduler.Stop()
 			_ = mcpServer.Stop()
 			removeQuantMCP()
@@ -227,6 +233,8 @@ func Run(assets embed.FS) error {
 			configCtrl,
 			jobCtrl,
 			agentCtrl,
+			workspaceCtrl,
+			jobGroupCtrl,
 		},
 	})
 	if err != nil {

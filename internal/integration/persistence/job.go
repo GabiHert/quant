@@ -24,7 +24,7 @@ func NewJobPersistence(db *sql.DB) adapter.JobPersistence {
 const jobColumns = `id, name, description, type, working_directory, schedule_enabled, schedule_type, cron_expression,
 		schedule_interval, schedule_start_time, timeout_seconds, prompt, allow_bypass, autonomous_mode,
 		max_retries, model, override_repo_command, claude_command, agent_id, success_prompt, failure_prompt, metadata_prompt,
-		interpreter, script_content, env_variables, created_at, updated_at, last_run_at`
+		interpreter, script_content, env_variables, workspace_id, created_at, updated_at, last_run_at`
 
 const jobTriggerColumns = `id, source_job_id, target_job_id, trigger_on`
 
@@ -41,7 +41,7 @@ func scanJobRow(scanner interface{ Scan(...any) error }) (pdto.JobRow, error) {
 		&row.MaxRetries, &row.Model, &row.OverrideRepoCommand, &row.ClaudeCommand,
 		&row.AgentID, &row.SuccessPrompt, &row.FailurePrompt, &row.MetadataPrompt,
 		&row.Interpreter, &row.ScriptContent, &row.EnvVariables,
-		&row.CreatedAt, &row.UpdatedAt, &row.LastRunAt,
+		&row.WorkspaceID, &row.CreatedAt, &row.UpdatedAt, &row.LastRunAt,
 	)
 	return row, err
 }
@@ -141,8 +141,8 @@ func (p *jobPersistence) SaveJob(job entity.Job) error {
 		cron_expression, schedule_interval, schedule_start_time, timeout_seconds, prompt, allow_bypass,
 		autonomous_mode, max_retries, model, override_repo_command, claude_command, agent_id,
 		success_prompt, failure_prompt, metadata_prompt,
-		interpreter, script_content, env_variables, created_at, updated_at, last_run_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		interpreter, script_content, env_variables, workspace_id, created_at, updated_at, last_run_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := p.db.Exec(query,
 		row.ID, row.Name, row.Description, row.Type, row.WorkingDirectory,
@@ -152,7 +152,7 @@ func (p *jobPersistence) SaveJob(job entity.Job) error {
 		row.MaxRetries, row.Model, row.OverrideRepoCommand, row.ClaudeCommand,
 		row.AgentID, row.SuccessPrompt, row.FailurePrompt, row.MetadataPrompt,
 		row.Interpreter, row.ScriptContent, row.EnvVariables,
-		row.CreatedAt, row.UpdatedAt, row.LastRunAt,
+		row.WorkspaceID, row.CreatedAt, row.UpdatedAt, row.LastRunAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save job: %w", err)
@@ -171,7 +171,7 @@ func (p *jobPersistence) UpdateJob(job entity.Job) error {
 		autonomous_mode = ?, max_retries = ?, model = ?, override_repo_command = ?,
 		claude_command = ?, agent_id = ?, success_prompt = ?, failure_prompt = ?, metadata_prompt = ?,
 		interpreter = ?, script_content = ?, env_variables = ?,
-		updated_at = ?, last_run_at = ? WHERE id = ?`
+		workspace_id = ?, updated_at = ?, last_run_at = ? WHERE id = ?`
 
 	result, err := p.db.Exec(query,
 		row.Name, row.Description, row.Type, row.WorkingDirectory,
@@ -180,7 +180,7 @@ func (p *jobPersistence) UpdateJob(job entity.Job) error {
 		row.AutonomousMode, row.MaxRetries, row.Model, row.OverrideRepoCommand,
 		row.ClaudeCommand, row.AgentID, row.SuccessPrompt, row.FailurePrompt, row.MetadataPrompt,
 		row.Interpreter, row.ScriptContent, row.EnvVariables,
-		row.UpdatedAt, row.LastRunAt, row.ID,
+		row.WorkspaceID, row.UpdatedAt, row.LastRunAt, row.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update job: %w", err)

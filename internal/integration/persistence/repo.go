@@ -22,14 +22,22 @@ func NewRepoPersistence(db *sql.DB) adapter.RepoPersistence {
 	return &repoPersistence{db: db}
 }
 
+const repoColumns = `id, name, path, workspace_id, created_at, updated_at, closed_at`
+
+func scanRepoRow(scanner interface{ Scan(...any) error }) (pdto.RepoRow, error) {
+	var row pdto.RepoRow
+	err := scanner.Scan(
+		&row.ID, &row.Name, &row.Path, &row.WorkspaceID,
+		&row.CreatedAt, &row.UpdatedAt, &row.ClosedAt,
+	)
+	return row, err
+}
+
 // FindRepoByID retrieves a repo by its ID.
 func (p *repoPersistence) FindRepoByID(id string) (*entity.Repo, error) {
-	query := `SELECT id, name, path, created_at, updated_at, closed_at FROM repos WHERE id = ?`
+	query := `SELECT ` + repoColumns + ` FROM repos WHERE id = ?`
 
-	var row pdto.RepoRow
-	err := p.db.QueryRow(query, id).Scan(
-		&row.ID, &row.Name, &row.Path, &row.CreatedAt, &row.UpdatedAt, &row.ClosedAt,
-	)
+	row, err := scanRepoRow(p.db.QueryRow(query, id))
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -42,20 +50,17 @@ func (p *repoPersistence) FindRepoByID(id string) (*entity.Repo, error) {
 	return &repo, nil
 }
 
-// FindRepoByPath retrieves a repo by its filesystem path.
-func (p *repoPersistence) FindRepoByPath(path string) (*entity.Repo, error) {
-	query := `SELECT id, name, path, created_at, updated_at, closed_at FROM repos WHERE path = ?`
+// FindRepoByPathAndWorkspace retrieves a repo by its filesystem path within a specific workspace.
+func (p *repoPersistence) FindRepoByPathAndWorkspace(path string, workspaceID string) (*entity.Repo, error) {
+	query := `SELECT ` + repoColumns + ` FROM repos WHERE path = ? AND workspace_id = ?`
 
-	var row pdto.RepoRow
-	err := p.db.QueryRow(query, path).Scan(
-		&row.ID, &row.Name, &row.Path, &row.CreatedAt, &row.UpdatedAt, &row.ClosedAt,
-	)
+	row, err := scanRepoRow(p.db.QueryRow(query, path, workspaceID))
 
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to find repo by path: %w", err)
+		return nil, fmt.Errorf("failed to find repo by path and workspace: %w", err)
 	}
 
 	repo := row.ToEntity()
@@ -64,7 +69,7 @@ func (p *repoPersistence) FindRepoByPath(path string) (*entity.Repo, error) {
 
 // FindAllRepos retrieves all open (non-closed) repos.
 func (p *repoPersistence) FindAllRepos() ([]entity.Repo, error) {
-	query := `SELECT id, name, path, created_at, updated_at, closed_at FROM repos WHERE closed_at IS NULL ORDER BY created_at DESC`
+	query := `SELECT ` + repoColumns + ` FROM repos WHERE closed_at IS NULL ORDER BY created_at DESC`
 
 	rows, err := p.db.Query(query)
 	if err != nil {
@@ -74,10 +79,33 @@ func (p *repoPersistence) FindAllRepos() ([]entity.Repo, error) {
 
 	var repos []entity.Repo
 	for rows.Next() {
-		var row pdto.RepoRow
-		err := rows.Scan(
-			&row.ID, &row.Name, &row.Path, &row.CreatedAt, &row.UpdatedAt, &row.ClosedAt,
-		)
+		row, err := scanRepoRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan repo row: %w", err)
+		}
+		repos = append(repos, row.ToEntity())
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating repo rows: %w", err)
+	}
+
+	return repos, nil
+}
+
+// FindReposByWorkspace retrieves all open repos for a specific workspace.
+func (p *repoPersistence) FindReposByWorkspace(workspaceID string) ([]entity.Repo, error) {
+	query := `SELECT ` + repoColumns + ` FROM repos WHERE closed_at IS NULL AND workspace_id = ? ORDER BY created_at DESC`
+
+	rows, err := p.db.Query(query, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find repos by workspace: %w", err)
+	}
+	defer rows.Close()
+
+	var repos []entity.Repo
+	for rows.Next() {
+		row, err := scanRepoRow(rows)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan repo row: %w", err)
 		}
@@ -95,9 +123,9 @@ func (p *repoPersistence) FindAllRepos() ([]entity.Repo, error) {
 func (p *repoPersistence) SaveRepo(repo entity.Repo) error {
 	row := pdto.RepoRowFromEntity(repo)
 
-	query := `INSERT INTO repos (id, name, path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
+	query := `INSERT INTO repos (id, name, path, workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
 
-	_, err := p.db.Exec(query, row.ID, row.Name, row.Path, row.CreatedAt, row.UpdatedAt)
+	_, err := p.db.Exec(query, row.ID, row.Name, row.Path, row.WorkspaceID, row.CreatedAt, row.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to save repo: %w", err)
 	}

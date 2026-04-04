@@ -49,6 +49,7 @@ type Config struct {
 	CliBinaryPath    string            `json:"cliBinaryPath"`
 	ExtraCliArgs     string            `json:"extraCliArgs"`
 	DefaultModel     string            `json:"defaultModel"`
+	AssistantModel   string            `json:"assistantModel"`
 	EnvVariables     map[string]string `json:"envVariables"`
 	CommandOverrides map[string]string `json:"commandOverrides"`
 }
@@ -96,6 +97,7 @@ func NewDefaultConfig() Config {
 		CliBinaryPath:    "claude",
 		ExtraCliArgs:     "",
 		DefaultModel:     "cli default",
+		AssistantModel:   "claude-sonnet-4-6",
 		EnvVariables:     make(map[string]string),
 		CommandOverrides: make(map[string]string),
 	}

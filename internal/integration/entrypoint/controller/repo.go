@@ -50,7 +50,7 @@ func (c *repoController) BrowseDirectory() (string, error) {
 
 // OpenRepo registers a new repository and returns its response DTO.
 func (c *repoController) OpenRepo(request dto.CreateRepoRequest) (*dto.RepoResponse, error) {
-	repo, err := c.repoManager.OpenRepo(request.Name, request.Path)
+	repo, err := c.repoManager.OpenRepo(request.Name, request.Path, request.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,9 +58,9 @@ func (c *repoController) OpenRepo(request dto.CreateRepoRequest) (*dto.RepoRespo
 	return dto.RepoResponseFromEntityPtr(repo), nil
 }
 
-// ListRepos returns all registered repositories as response DTOs.
-func (c *repoController) ListRepos() ([]dto.RepoResponse, error) {
-	repos, err := c.repoManager.ListRepos()
+// ListReposByWorkspace returns all registered repositories for a workspace as response DTOs.
+func (c *repoController) ListReposByWorkspace(workspaceID string) ([]dto.RepoResponse, error) {
+	repos, err := c.repoManager.ListReposByWorkspace(workspaceID)
 	if err != nil {
 		return nil, err
 	}

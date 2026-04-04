@@ -19,6 +19,7 @@ interface Props {
   task: Task | null;
   onStart: (id: string, rows: number, cols: number) => void;
   onResume: (id: string, rows: number, cols: number) => void;
+  onRestart: (id: string, rows: number, cols: number) => void;
   onUnarchive?: (id: string) => void;
   displayStatus: import("./StatusBadge").DisplayStatus;
   embeddedTerminalSession?: Session | null;
@@ -32,6 +33,7 @@ export function SessionPanel({
   task,
   onStart,
   onResume,
+  onRestart,
   onUnarchive,
   displayStatus,
   embeddedTerminalSession,
@@ -196,14 +198,6 @@ export function SessionPanel({
 
         {/* Right: terminal btn + layout toggle + hamburger */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Resume button (only when paused) */}
-          {isPaused && !isArchived && (
-            <ActionBtn label="$ resume" onClick={() => {
-              // Resume is handled by TerminalPane auto-resume,
-              // but provide manual button for paused sessions
-              onResume(session.id, 24, 80);
-            }} color="#10B981" />
-          )}
 
           {/* Unarchive button */}
           {isArchived && onUnarchive && (
@@ -272,8 +266,8 @@ export function SessionPanel({
 
               {menuOpen && (
                 <HamburgerMenu
-                  autoScroll={autoScroll}
-                  onAutoScrollToggle={() => { setAutoScroll(!autoScroll); }}
+                  isRunning={session.status === "running"}
+                  onRestart={() => onRestart(session.id, 24, 80)}
                 />
               )}
             </div>
@@ -545,11 +539,11 @@ function LayoutIcon({
 }
 
 function HamburgerMenu({
-  autoScroll,
-  onAutoScrollToggle,
+  isRunning,
+  onRestart,
 }: {
-  autoScroll: boolean;
-  onAutoScrollToggle: () => void;
+  isRunning: boolean;
+  onRestart?: () => void;
 }) {
   return (
     <div
@@ -568,24 +562,14 @@ function HamburgerMenu({
         boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
       }}
     >
-      <MenuItemRow onClick={onAutoScrollToggle}>
-        <span
-          className="flex items-center justify-center"
-          style={{
-            width: 14,
-            height: 14,
-            border: `1px solid ${autoScroll ? "#10B981" : "#2a2a2a"}`,
-            backgroundColor: "#0A0A0A",
-            fontSize: 8,
-            fontWeight: 700,
-            color: "#10B981",
-            lineHeight: 1,
-          }}
-        >
-          {autoScroll ? "x" : ""}
-        </span>
-        <span style={{ color: "#FAFAFA" }}>auto-scroll</span>
-      </MenuItemRow>
+      {isRunning && onRestart && (
+        <MenuItemRow onClick={onRestart}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          <span style={{ color: "#FAFAFA" }}>restart</span>
+        </MenuItemRow>
+      )}
     </div>
   );
 }

@@ -61,6 +61,7 @@ func (c *jobController) CreateJob(request dto.CreateJobRequest) (*dto.JobRespons
 		Interpreter:         request.Interpreter,
 		ScriptContent:       request.ScriptContent,
 		EnvVariables:        request.EnvVariables,
+		WorkspaceID:         request.WorkspaceID,
 	}
 
 	created, err := c.jobManager.CreateJob(job, request.OnSuccess, request.OnFailure)
@@ -103,6 +104,7 @@ func (c *jobController) UpdateJob(request dto.UpdateJobRequest) (*dto.JobRespons
 		Interpreter:         request.Interpreter,
 		ScriptContent:       request.ScriptContent,
 		EnvVariables:        request.EnvVariables,
+		WorkspaceID:         request.WorkspaceID,
 	}
 
 	updated, err := c.jobManager.UpdateJob(job, request.OnSuccess, request.OnFailure)

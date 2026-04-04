@@ -10,8 +10,8 @@ export function GetRepo(arg1) {
   return window['go']['controller']['repoController']['GetRepo'](arg1);
 }
 
-export function ListRepos() {
-  return window['go']['controller']['repoController']['ListRepos']();
+export function ListReposByWorkspace(arg1) {
+  return window['go']['controller']['repoController']['ListReposByWorkspace'](arg1);
 }
 
 export function OnShutdown(arg1) {

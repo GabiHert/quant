@@ -210,6 +210,55 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("failed to create agents table: %w", err)
 	}
 
+	workspacesTable := `
+	CREATE TABLE IF NOT EXISTS workspaces (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`
+
+	_, err = db.Exec(workspacesTable)
+	if err != nil {
+		return fmt.Errorf("failed to create workspaces table: %w", err)
+	}
+
+	jobGroupsTable := `
+	CREATE TABLE IF NOT EXISTS job_groups (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		workspace_id TEXT DEFAULT 'default',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`
+
+	_, err = db.Exec(jobGroupsTable)
+	if err != nil {
+		return fmt.Errorf("failed to create job_groups table: %w", err)
+	}
+
+	jobGroupMembersTable := `
+	CREATE TABLE IF NOT EXISTS job_group_members (
+		id TEXT PRIMARY KEY,
+		job_group_id TEXT NOT NULL,
+		job_id TEXT NOT NULL,
+		FOREIGN KEY (job_group_id) REFERENCES job_groups(id) ON DELETE CASCADE,
+		FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+	);`
+
+	_, err = db.Exec(jobGroupMembersTable)
+	if err != nil {
+		return fmt.Errorf("failed to create job_group_members table: %w", err)
+	}
+
+	// Ensure the "Default" workspace always exists.
+	var defaultCount int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM workspaces WHERE name = 'Default'`).Scan(&defaultCount)
+	if defaultCount == 0 {
+		now := "2024-01-01T00:00:00Z"
+		_, _ = db.Exec(`INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('default', 'Default', ?, ?)`, now, now)
+	}
+
 	// Idempotent ALTER TABLE statements for schema evolution.
 	alterStatements := []string{
 		`ALTER TABLE jobs ADD COLUMN last_run_at TEXT`,
@@ -227,6 +276,11 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE jobs ADD COLUMN metadata_prompt TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE job_runs ADD COLUMN model_used TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE jobs ADD COLUMN agent_id TEXT REFERENCES agents(id)`,
+		`ALTER TABLE sessions ADD COLUMN workspace_id TEXT DEFAULT 'default'`,
+		`ALTER TABLE sessions ADD COLUMN no_flicker INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE jobs ADD COLUMN workspace_id TEXT DEFAULT 'default'`,
+		`ALTER TABLE agents ADD COLUMN workspace_id TEXT DEFAULT 'default'`,
+		`ALTER TABLE repos ADD COLUMN workspace_id TEXT DEFAULT 'default'`,
 	}
 	for _, stmt := range alterStatements {
 		// Ignore errors from ALTER TABLE since the column may already exist.

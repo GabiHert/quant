@@ -39,6 +39,8 @@ type Job struct {
 	ScriptContent string
 	EnvVariables  map[string]string
 
+	WorkspaceID string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	LastRunAt *time.Time

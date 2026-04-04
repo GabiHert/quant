@@ -47,6 +47,7 @@ func (c *agentController) CreateAgent(request dto.CreateAgentRequest) (*dto.Agen
 		EnvVariables:   request.EnvVariables,
 		Boundaries:     request.Boundaries,
 		Skills:         request.Skills,
+		WorkspaceID:    request.WorkspaceID,
 	}
 
 	created, err := c.agentManager.CreateAgent(agent)
@@ -71,6 +72,7 @@ func (c *agentController) UpdateAgent(request dto.UpdateAgentRequest) (*dto.Agen
 		EnvVariables:   request.EnvVariables,
 		Boundaries:     request.Boundaries,
 		Skills:         request.Skills,
+		WorkspaceID:    request.WorkspaceID,
 	}
 
 	updated, err := c.agentManager.UpdateAgent(agent)

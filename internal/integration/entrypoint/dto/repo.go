@@ -7,27 +7,30 @@ import (
 
 // CreateRepoRequest represents the request payload for registering a new repository.
 type CreateRepoRequest struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	WorkspaceID string `json:"workspaceId"`
 }
 
 // RepoResponse represents the response payload for repository data.
 type RepoResponse struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	WorkspaceID string `json:"workspaceId"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 // RepoResponseFromEntity converts a domain entity to a RepoResponse DTO.
 func RepoResponseFromEntity(repo entity.Repo) RepoResponse {
 	return RepoResponse{
-		ID:        repo.ID,
-		Name:      repo.Name,
-		Path:      repo.Path,
-		CreatedAt: repo.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt: repo.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:          repo.ID,
+		Name:        repo.Name,
+		Path:        repo.Path,
+		WorkspaceID: repo.WorkspaceID,
+		CreatedAt:   repo.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   repo.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
