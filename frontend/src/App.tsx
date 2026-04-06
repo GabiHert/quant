@@ -1317,7 +1317,9 @@ function App() {
           editJob={modal.job}
           onSubmit={async (req) => {
             try {
-              await api.updateJob(req as UpdateJobRequest);
+              const jobReq = req as UpdateJobRequest;
+              jobReq.workspaceId = modal.job.workspaceId;
+              await api.updateJob(jobReq);
               setModal({ type: "none" });
               fetchJobs();
             } catch (err) {
@@ -1343,7 +1345,9 @@ function App() {
         <CreateAgentModal
           agent={modal.agent}
           onSubmit={async (req) => {
-            await api.updateAgent(req as UpdateAgentRequest);
+            const agentReq = req as UpdateAgentRequest;
+            agentReq.workspaceId = modal.agent.workspaceId;
+            await api.updateAgent(agentReq);
             setModal({ type: "none" });
             fetchAgents();
           }}
@@ -1401,7 +1405,6 @@ function App() {
             onRefreshJobGroups={fetchJobGroups}
           />
           {renderIconStrip()}
-          {renderModals()}
         </div>
       )}
 
@@ -1418,7 +1421,6 @@ function App() {
             onRefreshAgents={fetchAgents}
           />
           {renderIconStrip()}
-          {renderModals()}
         </div>
       )}
 
@@ -1611,7 +1613,10 @@ function App() {
         />
       )}
 
-      {renderModals()}
+      {/* Modals rendered once at the top level with high z-index so they appear above all views */}
+      <div style={{ position: "fixed", zIndex: 50 }}>
+        {renderModals()}
+      </div>
 
       {/* Toast notifications */}
       {toasts.length > 0 && (
