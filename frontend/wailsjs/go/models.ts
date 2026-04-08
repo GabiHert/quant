@@ -346,6 +346,8 @@ export namespace dto {
 	}
 	export class CreateWorkspaceRequest {
 	    name: string;
+	    claudeConfigPath: string;
+	    mcpConfigPath: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CreateWorkspaceRequest(source);
@@ -354,6 +356,8 @@ export namespace dto {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
+	        this.claudeConfigPath = source["claudeConfigPath"];
+	        this.mcpConfigPath = source["mcpConfigPath"];
 	    }
 	}
 	export class DiffFileResponse {
@@ -528,6 +532,24 @@ export namespace dto {
 	        this.errorMessage = source["errorMessage"];
 	        this.startedAt = source["startedAt"];
 	        this.finishedAt = source["finishedAt"];
+	    }
+	}
+	export class PathValidationResult {
+	    claudeConfigValid: boolean;
+	    claudeConfigError: string;
+	    mcpConfigValid: boolean;
+	    mcpConfigError: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PathValidationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.claudeConfigValid = source["claudeConfigValid"];
+	        this.claudeConfigError = source["claudeConfigError"];
+	        this.mcpConfigValid = source["mcpConfigValid"];
+	        this.mcpConfigError = source["mcpConfigError"];
 	    }
 	}
 	export class RepoResponse {
@@ -847,6 +869,8 @@ export namespace dto {
 	export class UpdateWorkspaceRequest {
 	    id: string;
 	    name: string;
+	    claudeConfigPath: string;
+	    mcpConfigPath: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateWorkspaceRequest(source);
@@ -856,11 +880,15 @@ export namespace dto {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.claudeConfigPath = source["claudeConfigPath"];
+	        this.mcpConfigPath = source["mcpConfigPath"];
 	    }
 	}
 	export class WorkspaceResponse {
 	    id: string;
 	    name: string;
+	    claudeConfigPath: string;
+	    mcpConfigPath: string;
 	    createdAt: string;
 	    updatedAt: string;
 	
@@ -872,6 +900,8 @@ export namespace dto {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.claudeConfigPath = source["claudeConfigPath"];
+	        this.mcpConfigPath = source["mcpConfigPath"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }

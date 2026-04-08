@@ -280,6 +280,8 @@ export interface SkillInfo {
 export interface Workspace {
   id: string;
   name: string;
+  claudeConfigPath?: string;
+  mcpConfigPath?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -310,9 +312,20 @@ export interface UpdateJobGroupRequest {
 
 export interface CreateWorkspaceRequest {
   name: string;
+  claudeConfigPath?: string;
+  mcpConfigPath?: string;
 }
 
 export interface UpdateWorkspaceRequest {
   id: string;
   name: string;
+  claudeConfigPath?: string;
+  mcpConfigPath?: string;
+}
+
+export interface PathValidationResult {
+  claudeConfigValid: boolean;
+  claudeConfigError: string;
+  mcpConfigValid: boolean;
+  mcpConfigError: string;
 }
