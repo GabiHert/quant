@@ -22,6 +22,7 @@ import type {
   UpdateWorkspaceRequest,
   CreateJobGroupRequest,
   UpdateJobGroupRequest,
+  PathValidationResult,
 } from "./types";
 
 // These functions map to Go controller methods bound via Wails.
@@ -343,12 +344,12 @@ export function listAgents(): Promise<Agent[]> {
   return callGo(PKG, AGENT_CTRL, "ListAgents");
 }
 
-export function listAvailableSkills(): Promise<SkillInfo[]> {
-  return callGo(PKG, AGENT_CTRL, "ListAvailableSkills");
+export function listAvailableSkills(workspaceId: string): Promise<SkillInfo[]> {
+  return callGo(PKG, AGENT_CTRL, "ListAvailableSkills", workspaceId);
 }
 
-export function listAvailableMcpServers(): Promise<string[]> {
-  return callGo(PKG, AGENT_CTRL, "ListAvailableMcpServers");
+export function listAvailableMcpServers(workspaceId: string): Promise<string[]> {
+  return callGo(PKG, AGENT_CTRL, "ListAvailableMcpServers", workspaceId);
 }
 
 // --- Job Groups ---
@@ -393,4 +394,16 @@ export function getWorkspace(id: string): Promise<Workspace> {
 
 export function listWorkspaces(): Promise<Workspace[]> {
   return callGo(PKG, WORKSPACE_CTRL, "ListWorkspaces");
+}
+
+export function browseClaudeConfigDir(): Promise<string> {
+  return callGo(PKG, WORKSPACE_CTRL, "BrowseClaudeConfigDir");
+}
+
+export function browseMcpConfigFile(): Promise<string> {
+  return callGo(PKG, WORKSPACE_CTRL, "BrowseMcpConfigFile");
+}
+
+export function validateWorkspacePaths(claudeRoot: string, mcpRoot: string): Promise<PathValidationResult> {
+  return callGo(PKG, WORKSPACE_CTRL, "ValidatePaths", claudeRoot, mcpRoot);
 }

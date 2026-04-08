@@ -96,8 +96,13 @@ function App() {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [jobGroups, setJobGroups] = useState<JobGroup[]>([]);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [newClaudeConfigPath, setNewClaudeConfigPath] = useState("");
+  const [newMcpConfigPath, setNewMcpConfigPath] = useState("");
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null);
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
+  const [editWorkspaceForm, setEditWorkspaceForm] = useState({ name: "", claudeConfigPath: "", mcpConfigPath: "" });
+  const [pathErrors, setPathErrors] = useState({ claude: "", mcp: "" });
   const [diffSession, setDiffSession] = useState<{ id: string; name: string } | null>(null);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [commitMessagePrefix, setCommitMessagePrefix] = useState("");
@@ -1169,6 +1174,120 @@ function App() {
                   );
                 }
 
+                if (editingWorkspaceId === ws.id) {
+                  const inputStyle = {
+                    width: "100%", padding: "4px 8px", marginTop: 4,
+                    backgroundColor: "#111", border: "1px solid #333", borderRadius: 4,
+                    color: "#FAFAFA", fontSize: 11, outline: "none",
+                    fontFamily: "'JetBrains Mono', monospace",
+                  } as const;
+                  return (
+                    <form
+                      key={ws.id}
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!editWorkspaceForm.name.trim()) return;
+                        const v = await api.validateWorkspacePaths(editWorkspaceForm.claudeConfigPath.trim(), editWorkspaceForm.mcpConfigPath.trim());
+                        setPathErrors({ claude: v.claudeConfigError || "", mcp: v.mcpConfigError || "" });
+                        if (!v.claudeConfigValid || !v.mcpConfigValid) return;
+                        try {
+                          await api.updateWorkspace({
+                            id: ws.id,
+                            name: editWorkspaceForm.name.trim(),
+                            claudeConfigPath: editWorkspaceForm.claudeConfigPath.trim() || undefined,
+                            mcpConfigPath: editWorkspaceForm.mcpConfigPath.trim() || undefined,
+                          });
+                          await fetchWorkspaces();
+                          setEditingWorkspaceId(null);
+                          setPathErrors({ claude: "", mcp: "" });
+                        } catch (err) {
+                          console.error("failed to update workspace:", err);
+                        }
+                      }}
+                      style={{ padding: "6px 12px" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div style={{ color: "#6B7280", fontSize: 10, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Edit workspace</div>
+                      <input
+                        autoFocus
+                        value={editWorkspaceForm.name}
+                        onChange={(e) => setEditWorkspaceForm((f) => ({ ...f, name: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === "Escape") setEditingWorkspaceId(null); }}
+                        placeholder="Name"
+                        style={{ ...inputStyle, marginTop: 0 }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = "#10B981"; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = "#333"; }}
+                      />
+                      <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                        <input
+                          value={editWorkspaceForm.claudeConfigPath}
+                          onChange={(e) => setEditWorkspaceForm((f) => ({ ...f, claudeConfigPath: e.target.value }))}
+                          placeholder=".claude root"
+                          title="Project root containing .claude/skills/"
+                          style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+                          onFocus={(e) => { e.currentTarget.style.borderColor = "#10B981"; }}
+                          onBlur={(e) => { e.currentTarget.style.borderColor = "#333"; }}
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const path = await api.browseClaudeConfigDir();
+                            if (path) setEditWorkspaceForm((f) => ({ ...f, claudeConfigPath: path }));
+                          }}
+                          style={{ padding: "4px 8px", backgroundColor: "#222", border: "1px solid #333", borderRadius: 4, color: "#6B7280", cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = "#FAFAFA"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = "#6B7280"; }}
+                          title="Browse project root for .claude"
+                        >...</button>
+                      </div>
+                      {pathErrors.claude && <div style={{ color: "#EF4444", fontSize: 10, marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{pathErrors.claude}</div>}
+                      <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                        <input
+                          value={editWorkspaceForm.mcpConfigPath}
+                          onChange={(e) => setEditWorkspaceForm((f) => ({ ...f, mcpConfigPath: e.target.value }))}
+                          placeholder=".mcp.json root"
+                          title="Project root containing .mcp.json"
+                          style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+                          onFocus={(e) => { e.currentTarget.style.borderColor = "#10B981"; }}
+                          onBlur={(e) => { e.currentTarget.style.borderColor = "#333"; }}
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const path = await api.browseMcpConfigFile();
+                            if (path) setEditWorkspaceForm((f) => ({ ...f, mcpConfigPath: path }));
+                          }}
+                          style={{ padding: "4px 8px", backgroundColor: "#222", border: "1px solid #333", borderRadius: 4, color: "#6B7280", cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = "#FAFAFA"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = "#6B7280"; }}
+                          title="Browse project root for .mcp.json"
+                        >...</button>
+                      </div>
+                      {pathErrors.mcp && <div style={{ color: "#EF4444", fontSize: 10, marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{pathErrors.mcp}</div>}
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        <button
+                          type="submit"
+                          style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid #10B981",
+                            backgroundColor: "#10B981", color: "#fff", cursor: "pointer",
+                            fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+                          }}
+                        >Save</button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setEditingWorkspaceId(null); }}
+                          style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid #333",
+                            backgroundColor: "transparent", color: "#6B7280", cursor: "pointer",
+                            fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+                          }}
+                        >Cancel</button>
+                      </div>
+                    </form>
+                  );
+                }
+
                 return (
                   <div
                     key={ws.id}
@@ -1201,6 +1320,30 @@ function App() {
                         </svg>
                       )}
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingWorkspaceId(ws.id);
+                        setEditWorkspaceForm({
+                          name: ws.name,
+                          claudeConfigPath: ws.claudeConfigPath ?? "",
+                          mcpConfigPath: ws.mcpConfigPath ?? "",
+                        });
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 28, height: 28, flexShrink: 0,
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "#6B7280",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = "#FAFAFA"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = "#6B7280"; }}
+                      title={`Settings for ${ws.name}`}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                      </svg>
+                    </button>
                     {isDeletable && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeletingWorkspaceId(ws.id); }}
@@ -1229,12 +1372,22 @@ function App() {
                     e.preventDefault();
                     e.stopPropagation();
                     if (!newWorkspaceName.trim()) return;
+                    const v = await api.validateWorkspacePaths(newClaudeConfigPath.trim(), newMcpConfigPath.trim());
+                    setPathErrors({ claude: v.claudeConfigError || "", mcp: v.mcpConfigError || "" });
+                    if (!v.claudeConfigValid || !v.mcpConfigValid) return;
                     try {
-                      const ws = await api.createWorkspace({ name: newWorkspaceName.trim() });
+                      const ws = await api.createWorkspace({
+                        name: newWorkspaceName.trim(),
+                        claudeConfigPath: newClaudeConfigPath.trim() || undefined,
+                        mcpConfigPath: newMcpConfigPath.trim() || undefined,
+                      });
                       await fetchWorkspaces();
                       setActiveWorkspaceId(ws.id);
                       setCreatingWorkspace(false);
                       setNewWorkspaceName("");
+                      setNewClaudeConfigPath("");
+                      setNewMcpConfigPath("");
+                      setPathErrors({ claude: "", mcp: "" });
                       setWorkspaceDropdownOpen(false);
                     } catch (err) {
                       console.error("failed to create workspace:", err);
@@ -1248,7 +1401,7 @@ function App() {
                     value={newWorkspaceName}
                     onChange={(e) => setNewWorkspaceName(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Escape") { setCreatingWorkspace(false); setNewWorkspaceName(""); }
+                      if (e.key === "Escape") { setCreatingWorkspace(false); setNewWorkspaceName(""); setNewClaudeConfigPath(""); setNewMcpConfigPath(""); }
                     }}
                     placeholder="Workspace name..."
                     style={{
@@ -1260,6 +1413,62 @@ function App() {
                     onFocus={(e) => { e.currentTarget.style.borderColor = "#10B981"; }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = "#333"; }}
                   />
+                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    <input
+                      value={newClaudeConfigPath}
+                      onChange={(e) => setNewClaudeConfigPath(e.target.value)}
+                      placeholder=".claude root (optional)"
+                      title="Project root containing .claude/skills/ (e.g. /path/to/project)"
+                      style={{
+                        flex: 1, padding: "4px 8px",
+                        backgroundColor: "#111", border: "1px solid #333", borderRadius: 4,
+                        color: "#FAFAFA", fontSize: 11, outline: "none",
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = "#10B981"; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = "#333"; }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const path = await api.browseClaudeConfigDir();
+                        if (path) setNewClaudeConfigPath(path);
+                      }}
+                      style={{ padding: "4px 8px", backgroundColor: "#222", border: "1px solid #333", borderRadius: 4, color: "#6B7280", cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = "#FAFAFA"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = "#6B7280"; }}
+                      title="Browse project root for .claude"
+                    >...</button>
+                  </div>
+                  {pathErrors.claude && <div style={{ color: "#EF4444", fontSize: 10, marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{pathErrors.claude}</div>}
+                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    <input
+                      value={newMcpConfigPath}
+                      onChange={(e) => setNewMcpConfigPath(e.target.value)}
+                      placeholder=".mcp.json root (optional)"
+                      title="Project root containing .mcp.json (e.g. /path/to/project)"
+                      style={{
+                        flex: 1, padding: "4px 8px",
+                        backgroundColor: "#111", border: "1px solid #333", borderRadius: 4,
+                        color: "#FAFAFA", fontSize: 11, outline: "none",
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = "#10B981"; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = "#333"; }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const path = await api.browseMcpConfigFile();
+                        if (path) setNewMcpConfigPath(path);
+                      }}
+                      style={{ padding: "4px 8px", backgroundColor: "#222", border: "1px solid #333", borderRadius: 4, color: "#6B7280", cursor: "pointer", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = "#FAFAFA"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = "#6B7280"; }}
+                      title="Browse project root for .mcp.json"
+                    >...</button>
+                  </div>
+                  {pathErrors.mcp && <div style={{ color: "#EF4444", fontSize: 10, marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{pathErrors.mcp}</div>}
                 </form>
               ) : (
                 <button
@@ -1331,6 +1540,7 @@ function App() {
       )}
       {modal.type === "createAgent" && (
         <CreateAgentModal
+          workspaceId={activeWorkspaceId}
           onSubmit={async (req) => {
             const agentReq = req as CreateAgentRequest;
             agentReq.workspaceId = activeWorkspaceId;
@@ -1344,6 +1554,7 @@ function App() {
       {modal.type === "editAgent" && (
         <CreateAgentModal
           agent={modal.agent}
+          workspaceId={modal.agent.workspaceId}
           onSubmit={async (req) => {
             const agentReq = req as UpdateAgentRequest;
             agentReq.workspaceId = modal.agent.workspaceId;

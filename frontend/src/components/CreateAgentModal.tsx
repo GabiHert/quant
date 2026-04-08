@@ -9,6 +9,7 @@ type TabKey = "personality" | "access" | "boundaries" | "skills";
 
 interface Props {
   agent?: Agent;
+  workspaceId: string;
   onSubmit: (req: CreateAgentRequest | UpdateAgentRequest) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
   onCancel: () => void;
@@ -214,7 +215,7 @@ function MiniSelect({
 
 // --- Main component ---
 
-export function CreateAgentModal({ agent, onSubmit, onDelete, onCancel }: Props) {
+export function CreateAgentModal({ agent, workspaceId, onSubmit, onDelete, onCancel }: Props) {
   const isEdit = !!agent;
   const [form, setForm] = useState<CreateAgentRequest>(
     agent ? agentToForm(agent) : buildDefaultForm()
@@ -232,14 +233,14 @@ export function CreateAgentModal({ agent, onSubmit, onDelete, onCancel }: Props)
   const [availableSkills, setAvailableSkills] = useState<SkillInfo[]>([]);
 
   useEffect(() => {
-    api.listAvailableMcpServers().then((servers) => {
+    api.listAvailableMcpServers(workspaceId).then((servers) => {
       setMcpServers(servers ?? []);
     }).catch(() => {});
 
-    api.listAvailableSkills().then((skills) => {
+    api.listAvailableSkills(workspaceId).then((skills) => {
       setAvailableSkills(skills ?? []);
     }).catch(() => {});
-  }, []);
+  }, [workspaceId]);
 
   function update<K extends keyof CreateAgentRequest>(key: K, value: CreateAgentRequest[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
