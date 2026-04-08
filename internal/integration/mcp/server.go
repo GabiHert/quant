@@ -457,7 +457,7 @@ Returns a confirmation message.`),
 	// 18. list_available_skills
 	mcpServer.AddTool(
 		mcp.NewTool("list_available_skills",
-			mcp.WithDescription(`List all Claude skills available in ~/.claude/skills/. Returns an array of skill name strings.
+			mcp.WithDescription(`List all Claude skills available in the workspace's configured .claude/skills/ directory, or ~/.claude/skills/ by default. Returns an array of skill name strings.
 
 Skills are markdown files or directories that provide domain-specific knowledge and patterns to Claude. Examples:
 - architecture: clean architecture patterns and layer separation rules
@@ -467,6 +467,7 @@ Skills are markdown files or directories that provide domain-specific knowledge 
 Use these names as keys in the agent 'skills' parameter. E.g. create_agent(skills='{"architecture":true,"bdd-testing":true}').
 
 Skills are read from the filesystem at agent creation time. The agent's system prompt includes the content of all enabled skills.`),
+			mcp.WithString("workspaceId", mcp.Description("Optional workspace ID. When provided, skills are read from the workspace's configured Claude config path instead of the global ~/.claude/skills/.")),
 		),
 		s.handleListAvailableSkills,
 	)
@@ -474,7 +475,7 @@ Skills are read from the filesystem at agent creation time. The agent's system p
 	// 19. list_available_mcp_servers
 	mcpServer.AddTool(
 		mcp.NewTool("list_available_mcp_servers",
-			mcp.WithDescription(`List all MCP servers configured in ~/.mcp.json. Returns an array of server name strings.
+			mcp.WithDescription(`List all MCP servers configured in the workspace's configured .mcp.json path, or ~/.mcp.json by default. Returns an array of server name strings.
 
 MCP servers provide external tool access to agents. Common examples:
 - dbhub: database querying (SQL)
@@ -485,6 +486,7 @@ MCP servers provide external tool access to agents. Common examples:
 Use these names as keys in the agent 'mcpServers' parameter. E.g. create_agent(mcpServers='{"dbhub":true,"linear":true}').
 
 When an agent has MCP servers enabled, the Claude CLI session is started with access to those servers' tools.`),
+			mcp.WithString("workspaceId", mcp.Description("Optional workspace ID. When provided, MCP servers are read from the workspace's configured MCP config path instead of the global ~/.mcp.json.")),
 		),
 		s.handleListAvailableMcpServers,
 	)
@@ -1414,13 +1416,42 @@ func (s *QuantMCPServer) handleDeleteAgent(_ context.Context, request mcp.CallTo
 	return mcp.NewToolResultText(fmt.Sprintf("Agent %s deleted successfully", id)), nil
 }
 
-func (s *QuantMCPServer) handleListAvailableSkills(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *QuantMCPServer) resolveSkillsDir(workspaceID string) string {
+	if workspaceID != "" {
+		ws, err := s.workspaceManager.GetWorkspace(workspaceID)
+		if err == nil && ws != nil && ws.ClaudeConfigPath != "" {
+			return filepath.Join(ws.ClaudeConfigPath, ".claude", "skills")
+		}
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return ""
+	}
+	return filepath.Join(home, ".claude", "skills")
+}
+
+func (s *QuantMCPServer) resolveMcpConfigPath(workspaceID string) string {
+	if workspaceID != "" {
+		ws, err := s.workspaceManager.GetWorkspace(workspaceID)
+		if err == nil && ws != nil && ws.McpConfigPath != "" {
+			return filepath.Join(ws.McpConfigPath, ".mcp.json")
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".mcp.json")
+}
+
+func (s *QuantMCPServer) handleListAvailableSkills(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	workspaceID := stringArg(request.GetArguments(), "workspaceId")
+
+	skillsDir := s.resolveSkillsDir(workspaceID)
+	if skillsDir == "" {
+		return marshalResult([]string{})
 	}
 
-	skillsDir := filepath.Join(home, ".claude", "skills")
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
 		return marshalResult([]string{})
@@ -1444,13 +1475,14 @@ func (s *QuantMCPServer) handleListAvailableSkills(_ context.Context, _ mcp.Call
 	return marshalResult(skills)
 }
 
-func (s *QuantMCPServer) handleListAvailableMcpServers(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+func (s *QuantMCPServer) handleListAvailableMcpServers(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	workspaceID := stringArg(request.GetArguments(), "workspaceId")
+
+	mcpPath := s.resolveMcpConfigPath(workspaceID)
+	if mcpPath == "" {
+		return marshalResult([]string{})
 	}
 
-	mcpPath := filepath.Join(home, ".mcp.json")
 	data, err := os.ReadFile(mcpPath)
 	if err != nil {
 		return marshalResult([]string{})
