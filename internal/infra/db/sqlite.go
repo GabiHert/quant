@@ -281,6 +281,8 @@ func runMigrations(db *sql.DB) error {
 		`ALTER TABLE jobs ADD COLUMN workspace_id TEXT DEFAULT 'default'`,
 		`ALTER TABLE agents ADD COLUMN workspace_id TEXT DEFAULT 'default'`,
 		`ALTER TABLE repos ADD COLUMN workspace_id TEXT DEFAULT 'default'`,
+		`ALTER TABLE workspaces ADD COLUMN claude_config_path TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE workspaces ADD COLUMN mcp_config_path TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		// Ignore errors from ALTER TABLE since the column may already exist.
