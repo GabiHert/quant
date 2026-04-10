@@ -1,0 +1,45 @@
+name: Auto Release Patch
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  auto-release-patch:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest version tag
+        id: version
+        run: |
+          LATEST=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName // "v0.0.0"')
+          echo "current=${LATEST}" >> $GITHUB_OUTPUT
+
+          MAJOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f1)
+          MINOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f2)
+          PATCH=$(echo "$LATEST" | sed 's/v//' | cut -d. -f3)
+          NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          echo "next=${NEXT}" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.next }}"
+          git push origin "${{ steps.version.outputs.next }}"
+
+      - name: Summary
+        run: |
+          echo "### Auto Release" >> $GITHUB_STEP_SUMMARY
+          echo "- Previous: \`${{ steps.version.outputs.current }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Released: \`${{ steps.version.outputs.next }}\`" >> $GITHUB_STEP_SUMMARY
