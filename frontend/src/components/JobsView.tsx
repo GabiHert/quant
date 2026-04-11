@@ -2656,6 +2656,7 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
                           <div style={{ padding: "4px 10px", fontSize: 9, color: "var(--q-fg-muted)", fontWeight: 500 }}>select execution</div>
                           <div
                             style={{ overflowY: "auto", flex: 1 }}
+                            onWheel={(e) => e.stopPropagation()}
                             onScroll={(e) => {
                               const el = e.currentTarget;
                               if (hasMore && el.scrollTop + el.clientHeight >= el.scrollHeight - 10) {
@@ -2779,6 +2780,7 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
                         <div style={{ padding: "4px 10px", fontSize: 9, color: "var(--q-fg-muted)", fontWeight: 500 }}>select execution</div>
                         <div
                           style={{ overflowY: "auto", flex: 1 }}
+                          onWheel={(e) => e.stopPropagation()}
                           onScroll={(e) => {
                             const el = e.currentTarget;
                             if (hasMore && el.scrollTop + el.clientHeight >= el.scrollHeight - 10) {
