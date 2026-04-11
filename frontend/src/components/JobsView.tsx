@@ -87,14 +87,6 @@ const pulseKeyframes = `
   80% { transform: rotate(1.5deg); }
   90% { transform: rotate(-1deg); }
 }
-@keyframes edge-wave {
-  from { stroke-dashoffset: 0; }
-  to { stroke-dashoffset: -22; }
-}
-@keyframes edge-wave-scared {
-  from { stroke-dashoffset: 0; }
-  to { stroke-dashoffset: -22; }
-}
 @keyframes modal-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -575,6 +567,12 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
   const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
   const [selectedEdge, setSelectedEdge] = useState<{ sourceId: string; targetId: string; type: "success" | "failure" } | null>(null);
   const [edgeDeleteHover, setEdgeDeleteHover] = useState(false);
+  const [wavePhase, setWavePhase] = useState(0);
+  const waveAmplitude = useRef(0);
+  const waveSpeed = useRef(0);
+  const waveFreq = useRef(0);
+  const waveAnimRef = useRef<number>(0);
+  const lastFrameTime = useRef(Date.now());
   const [flashingEdges, setFlashingEdges] = useState<Set<string>>(new Set()); // "sourceId->targetId" keys
   const didDrag = useRef(false);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
@@ -879,6 +877,48 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
   selectedEdgeRef.current = selectedEdge;
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
+  const edgeDeleteHoverRef = useRef(edgeDeleteHover);
+  edgeDeleteHoverRef.current = edgeDeleteHover;
+
+  // Animate wave on selected edge — only runs RAF loop when an edge is selected
+  useEffect(() => {
+    if (!selectedEdge) {
+      // Reset wave state when no edge selected
+      waveAmplitude.current = 0;
+      waveSpeed.current = 0;
+      return;
+    }
+
+    let running = true;
+    lastFrameTime.current = Date.now();
+    const animate = () => {
+      if (!running) return;
+
+      const isScared = edgeDeleteHoverRef.current;
+      const targetAmp = isScared ? 5 : 2;
+      const targetSpeed = isScared ? 0.008 : 0.003;
+      const targetFreq = isScared ? 5 : 3;
+
+      const lerpRate = 0.08;
+      waveAmplitude.current += (targetAmp - waveAmplitude.current) * lerpRate;
+      waveSpeed.current += (targetSpeed - waveSpeed.current) * lerpRate;
+      waveFreq.current += (targetFreq - waveFreq.current) * lerpRate;
+
+      const now = Date.now();
+      const dt = now - lastFrameTime.current;
+      lastFrameTime.current = now;
+      if (waveAmplitude.current > 0.05) {
+        setWavePhase((prev) => prev + waveSpeed.current * dt);
+      }
+      waveAnimRef.current = requestAnimationFrame(animate);
+    };
+
+    waveAnimRef.current = requestAnimationFrame(animate);
+    return () => {
+      running = false;
+      cancelAnimationFrame(waveAnimRef.current);
+    };
+  }, [selectedEdge]);
 
   // Refresh jobs list periodically so canvas stays in sync with external changes (MCP, scheduler)
   useEffect(() => {
@@ -1859,6 +1899,34 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
     );
   }
 
+  // Generate a smooth wavy path between two points — like a vibrating rope
+  function wavyPath(sx: number, sy: number, tx: number, ty: number, cx1: number, cy1: number, cx2: number, cy2: number, time: number, amplitude: number, frequency: number): string {
+    const steps = 40;
+    const points: string[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const mt = 1 - t;
+      const bx = mt*mt*mt*sx + 3*mt*mt*t*cx1 + 3*mt*t*t*cx2 + t*t*t*tx;
+      const by = mt*mt*mt*sy + 3*mt*mt*t*cy1 + 3*mt*t*t*cy2 + t*t*t*ty;
+      const envelope = Math.sin(t * Math.PI);
+      const wave = Math.sin(t * Math.PI * frequency + time) * amplitude * envelope;
+      const dt = 0.01;
+      const t2 = Math.min(t + dt, 1);
+      const mt2 = 1 - t2;
+      const bx2 = mt2*mt2*mt2*sx + 3*mt2*mt2*t2*cx1 + 3*mt2*t2*t2*cx2 + t2*t2*t2*tx;
+      const by2 = mt2*mt2*mt2*sy + 3*mt2*mt2*t2*cy1 + 3*mt2*t2*t2*cy2 + t2*t2*t2*ty;
+      const dx = bx2 - bx;
+      const dy = by2 - by;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const px = bx + nx * wave;
+      const py = by + ny * wave;
+      points.push(i === 0 ? `M ${px},${py}` : `L ${px},${py}`);
+    }
+    return points.join(" ");
+  }
+
   function renderSvgConnections() {
     const lines: React.ReactNode[] = [];
     let keyIdx = 0;
@@ -1985,20 +2053,17 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
                 setEdgeDeleteHover(false);
               }}
             />
-            {/* Visible dashed line — CSS-animated when selected (no RAF re-renders) */}
+            {/* Visible dashed line — wavy when selected, smooth transitions */}
             <path
-              d={pathD}
+              d={isSelected && waveAmplitude.current > 0.1
+                ? wavyPath(sx, sy, tx, ty, cx1, cy1, cx2, cy2, wavePhase, waveAmplitude.current, waveFreq.current)
+                : pathD}
               stroke={isFlashing ? edgeColor : isSelected ? (edgeDeleteHover ? "var(--q-error)" : "var(--q-fg)") : defaultStroke}
-              strokeWidth={isSelected ? 2.5 : 2}
-              strokeDasharray={isSelected ? "8 6" : "6 5"}
+              strokeWidth={2}
+              strokeDasharray="6 5"
               fill="none"
               markerEnd={isSelected ? (edgeDeleteHover ? "url(#arrow-delete)" : "url(#arrow-selected)") : edgeOpacity < 0.5 ? "url(#arrow-dim)" : `url(#arrow-${edgeType})`}
-              style={{
-                ...(isFlashing ? { animation: "edge-march 0.4s linear infinite" } : {}),
-                ...(isSelected ? { animation: edgeDeleteHover ? "edge-wave-scared 0.3s linear infinite" : "edge-wave 1.2s linear infinite" } : {}),
-                opacity: isSelected || isFlashing ? 1 : edgeOpacity,
-                transition: "opacity 0.2s, stroke-width 0.15s",
-              }}
+              style={{ ...(isFlashing ? { animation: "edge-march 0.4s linear infinite" } : {}), opacity: isSelected || isFlashing ? 1 : edgeOpacity, transition: "opacity 0.2s" }}
             />
             <circle cx={midX} cy={midY - 14} r={4} fill={isSelected && edgeDeleteHover ? "var(--q-error)" : edgeColor} style={{ opacity: isSelected || isFlashing ? 1 : edgeOpacity, transition: "opacity 0.2s" }} />
             <text
