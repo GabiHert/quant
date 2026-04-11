@@ -214,6 +214,7 @@ export interface Config {
   autoStopIdle: boolean;
   idleTimeoutMinutes: number;
   activeSessionId: string;
+  openSessionIds: string[];
 
   // Storage & Data
   dataDirectory: string;

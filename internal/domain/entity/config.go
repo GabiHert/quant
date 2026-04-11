@@ -30,7 +30,8 @@ type Config struct {
 	AutoResumeOnStart     bool   `json:"autoResumeOnStart"`
 	AutoStopIdle          bool   `json:"autoStopIdle"`
 	IdleTimeoutMinutes    int    `json:"idleTimeoutMinutes"`
-	ActiveSessionID       string `json:"activeSessionId"`
+	ActiveSessionID       string   `json:"activeSessionId"`
+	OpenSessionIDs        []string `json:"openSessionIds"`
 
 	// Storage & Data
 	DataDirectory     string `json:"dataDirectory"`
