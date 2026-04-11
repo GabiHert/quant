@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Config, Repo, Shortcut } from "../types";
 import * as api from "../api";
 import { ThemeSettings } from "./ThemeSettings";
+import { KeybindingsTab } from "./KeybindingsTab";
 
-type SettingsTab = "general" | "git" | "sessions" | "storage" | "terminal" | "claude" | "quanti" | "themes";
+type SettingsTab = "general" | "git" | "sessions" | "storage" | "terminal" | "claude" | "quanti" | "themes" | "keybindings";
 
 const NAV_ITEMS: { key: SettingsTab; label: string; icon: string }[] = [
   { key: "general", label: "general", icon: "settings" },
+  { key: "keybindings", label: "keybindings", icon: "keyboard" },
   { key: "themes", label: "themes", icon: "palette" },
   { key: "git", label: "git & branches", icon: "git-branch" },
   { key: "sessions", label: "sessions", icon: "terminal" },
@@ -156,6 +158,7 @@ export function Settings({ repos, onBack }: Props) {
         {/* Scroll Content */}
         <div className="flex-1 overflow-y-auto p-8" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
           {tab === "general" && <GeneralTab config={config} update={update} />}
+          {tab === "keybindings" && <KeybindingsTab />}
           {tab === "themes" && <ThemeSettings />}
           {tab === "git" && <GitTab config={config} update={update} repos={repos} />}
           {tab === "sessions" && <SessionsTab config={config} update={update} />}
@@ -1286,6 +1289,19 @@ function navIcon(name: string): React.ReactNode {
           <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
           <circle cx="9" cy="13" r="1.5" fill="currentColor" />
           <circle cx="15" cy="13" r="1.5" fill="currentColor" />
+        </svg>
+      );
+    case "keyboard":
+      return (
+        <svg {...props}>
+          <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+          <line x1="6" y1="8" x2="6.01" y2="8" />
+          <line x1="10" y1="8" x2="10.01" y2="8" />
+          <line x1="14" y1="8" x2="14.01" y2="8" />
+          <line x1="18" y1="8" x2="18.01" y2="8" />
+          <line x1="6" y1="12" x2="6.01" y2="12" />
+          <line x1="18" y1="12" x2="18.01" y2="12" />
+          <line x1="8" y1="16" x2="16" y2="16" />
         </svg>
       );
     case "palette":
