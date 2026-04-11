@@ -564,7 +564,6 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
   }, [openDropdownGroup]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
-  const initializedRef = useRef(false);
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId) ?? null;
   const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
@@ -689,12 +688,17 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
     return map;
   }, [jobs]);
 
-  // Initialize node positions on first render with jobs
+  // Clear stale positions immediately on workspace switch so minimap doesn't vanish
   useEffect(() => {
-    if (initializedRef.current) return;
-    if (jobs.length === 0) return;
-    initializedRef.current = true;
+    setNodePositions({});
+  }, [activeWorkspaceId]);
 
+  // Initialize node positions whenever jobs or workspace changes
+  useEffect(() => {
+    if (jobs.length === 0) {
+      setNodePositions({});
+      return;
+    }
     const saved = loadPositions(activeWorkspaceId);
     const hasAllPositions = jobs.every((j) => saved[j.id]);
     if (hasAllPositions) {
@@ -704,7 +708,7 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
       setNodePositions(layout);
       savePositions(layout, activeWorkspaceId);
     }
-  }, [jobs]);
+  }, [jobs, activeWorkspaceId]);
 
   // When modal opens, set selectedJobId for tab rendering and fetch runs
   useEffect(() => {
@@ -1470,6 +1474,7 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
               {renderKeyValue("task_prompt", selectedJob.prompt)}
               {renderKeyValue("success_criteria", selectedJob.successPrompt)}
               {renderKeyValue("failure_criteria", selectedJob.failurePrompt)}
+              {renderKeyValue("triage_prompt", selectedJob.triagePrompt)}
               {renderKeyValue("metadata_prompt", selectedJob.metadataPrompt)}
             </>)}
           </>
