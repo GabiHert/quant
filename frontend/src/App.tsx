@@ -40,6 +40,9 @@ import AgentsView from "./components/AgentsView";
 import { CreateAgentModal } from "./components/CreateAgentModal";
 import { QuantAssistant } from "./components/QuantAssistant";
 import { ChangelogModal } from "./components/ChangelogModal";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { ThemeQuickPicker } from "./components/ThemeQuickPicker";
+import { getActiveKeybindings, findMatchingAction, formatKeyCombo } from "./keybindings";
 import type { ChangelogEntry } from "./types";
 
 type ModalState =
@@ -114,6 +117,8 @@ function App() {
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [error, setError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: number; message: string; sessionId?: string }[]>([]);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const toastIdRef = useRef(0);
 
   // keep refs for polling callbacks
@@ -380,6 +385,102 @@ function App() {
     return () => { clearTimeout(timer); document.removeEventListener("click", handleClick); };
   }, [workspaceDropdownOpen]);
 
+
+  // --- Global keyboard shortcuts ---
+  // Keep refs current for the keyboard handler
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const commandPaletteOpenRef = useRef(commandPaletteOpen);
+  commandPaletteOpenRef.current = commandPaletteOpen;
+  const themePickerOpenRef = useRef(themePickerOpen);
+  themePickerOpenRef.current = themePickerOpen;
+
+  useEffect(() => {
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      // Skip when an overlay (command palette, theme picker) is open — they handle their own keys
+      if (commandPaletteOpenRef.current || themePickerOpenRef.current) return;
+
+      // Skip when terminal (xterm) has focus to avoid conflicts
+      const active = document.activeElement;
+      if (active && active.closest(".xterm")) return;
+
+      // Skip when settings view is active and user is recording keybindings
+      if (viewRef.current === "settings") return;
+
+      const bindings = getActiveKeybindings();
+      const matched = findMatchingAction(e, bindings);
+      if (!matched) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const tabs = openTabIdsRef.current;
+      const currentTab = activeTabIdRef.current;
+
+      switch (matched.id) {
+        case "nextTab": {
+          if (tabs.length === 0) return;
+          const idx = currentTab ? tabs.indexOf(currentTab) : -1;
+          const nextIdx = (idx + 1) % tabs.length;
+          setActiveTabId(tabs[nextIdx]);
+          setSelectedSessionId(tabs[nextIdx]);
+          break;
+        }
+        case "prevTab": {
+          if (tabs.length === 0) return;
+          const idx = currentTab ? tabs.indexOf(currentTab) : 0;
+          const prevIdx = (idx - 1 + tabs.length) % tabs.length;
+          setActiveTabId(tabs[prevIdx]);
+          setSelectedSessionId(tabs[prevIdx]);
+          break;
+        }
+        case "tab1": case "tab2": case "tab3": case "tab4": case "tab5":
+        case "tab6": case "tab7": case "tab8": case "tab9": {
+          const n = parseInt(matched.id.replace("tab", ""), 10) - 1;
+          if (n < tabs.length) {
+            setActiveTabId(tabs[n]);
+            setSelectedSessionId(tabs[n]);
+          }
+          break;
+        }
+        case "closeTab": {
+          if (currentTab) {
+            handleCloseTab(currentTab);
+          }
+          break;
+        }
+        case "stopSession": {
+          if (currentTab) {
+            handleStop(currentTab);
+          }
+          break;
+        }
+        case "workspace1": case "workspace2": case "workspace3": case "workspace4":
+        case "workspace5": case "workspace6": case "workspace7": case "workspace8":
+        case "workspace9": {
+          const n = parseInt(matched.id.replace("workspace", ""), 10) - 1;
+          const ws = workspacesRef.current;
+          if (n < ws.length) {
+            setActiveWorkspaceId(ws[n].id);
+          }
+          break;
+        }
+        case "themePicker": {
+          setThemePickerOpen(true);
+          break;
+        }
+        case "commandPalette": {
+          setCommandPaletteOpen(true);
+          break;
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleGlobalKeyDown, true);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // poll sessions every 3s
   useEffect(() => {
@@ -997,6 +1098,55 @@ function App() {
       };
     })
     .filter((t): t is NonNullable<typeof t> => t !== null);
+
+  // Build command palette commands
+  const paletteCommands: PaletteCommand[] = (() => {
+    const bindings = getActiveKeybindings();
+    const shortcutFor = (id: string) => bindings.find((b) => b.id === id)?.keys;
+    const cmds: PaletteCommand[] = [];
+
+    // Tab commands
+    cmds.push({ id: "nextTab", label: "Next tab", category: "tabs", shortcut: shortcutFor("nextTab"), onExecute: () => {
+      if (openTabIds.length === 0) return;
+      const idx = activeTabId ? openTabIds.indexOf(activeTabId) : -1;
+      const next = openTabIds[(idx + 1) % openTabIds.length];
+      setActiveTabId(next); setSelectedSessionId(next);
+    }});
+    cmds.push({ id: "prevTab", label: "Previous tab", category: "tabs", shortcut: shortcutFor("prevTab"), onExecute: () => {
+      if (openTabIds.length === 0) return;
+      const idx = activeTabId ? openTabIds.indexOf(activeTabId) : 0;
+      const prev = openTabIds[(idx - 1 + openTabIds.length) % openTabIds.length];
+      setActiveTabId(prev); setSelectedSessionId(prev);
+    }});
+    cmds.push({ id: "closeTab", label: "Close current tab", category: "tabs", shortcut: shortcutFor("closeTab"), onExecute: () => { if (activeTabId) handleCloseTab(activeTabId); } });
+    cmds.push({ id: "closeAllTabs", label: "Close all tabs", category: "tabs", onExecute: handleCloseAllTabs });
+
+    // Jump to specific tabs
+    tabs.forEach((t, i) => {
+      cmds.push({ id: `gotoTab-${t.id}`, label: `Go to tab: ${t.name}`, category: "tabs", shortcut: i < 9 ? shortcutFor(`tab${i + 1}`) : undefined, onExecute: () => { setActiveTabId(t.id); setSelectedSessionId(t.id); } });
+    });
+
+    // Session
+    if (activeTabId) {
+      cmds.push({ id: "stopSession", label: "Stop active session", category: "session", shortcut: shortcutFor("stopSession"), onExecute: () => handleStop(activeTabId) });
+    }
+
+    // Workspace
+    workspaces.forEach((ws, i) => {
+      cmds.push({ id: `workspace-${ws.id}`, label: `Switch to workspace: ${ws.name}`, category: "workspace", shortcut: i < 9 ? shortcutFor(`workspace${i + 1}`) : undefined, onExecute: () => setActiveWorkspaceId(ws.id) });
+    });
+
+    // Theme
+    cmds.push({ id: "themePicker", label: "Open theme picker", category: "theme", shortcut: shortcutFor("themePicker"), onExecute: () => setThemePickerOpen(true) });
+
+    // Views
+    cmds.push({ id: "viewSettings", label: "Open settings", category: "view", onExecute: () => setView("settings") });
+    cmds.push({ id: "viewDashboard", label: "Go to sessions", category: "view", onExecute: () => setView("dashboard") });
+    cmds.push({ id: "viewJobs", label: "Go to jobs", category: "view", onExecute: () => { fetchJobs(); setView("jobs"); } });
+    cmds.push({ id: "viewAgents", label: "Go to agents", category: "view", onExecute: () => { fetchAgents(); setView("agents"); } });
+
+    return cmds;
+  })();
 
   // Find the current task for the move session modal
   const moveSessionTask = modal.type === "moveSession"
@@ -1646,6 +1796,8 @@ function App() {
       <>
         {renderQuantiOverlay()}
         <Settings repos={repos} onBack={() => { fetchShortcuts(); setView("dashboard"); }} />
+        {commandPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCommandPaletteOpen(false)} />}
+        {themePickerOpen && <ThemeQuickPicker onClose={() => setThemePickerOpen(false)} />}
       </>
     );
   }
@@ -1660,6 +1812,8 @@ function App() {
           commitMessagePrefix={commitMessagePrefix}
           onBack={() => setView("dashboard")}
         />
+        {commandPaletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setCommandPaletteOpen(false)} />}
+        {themePickerOpen && <ThemeQuickPicker onClose={() => setThemePickerOpen(false)} />}
       </>
     );
   }
@@ -1905,6 +2059,19 @@ function App() {
       <div style={{ position: "fixed", zIndex: 50 }}>
         {renderModals()}
       </div>
+
+      {/* Command Palette */}
+      {commandPaletteOpen && (
+        <CommandPalette
+          commands={paletteCommands}
+          onClose={() => setCommandPaletteOpen(false)}
+        />
+      )}
+
+      {/* Theme Quick Picker */}
+      {themePickerOpen && (
+        <ThemeQuickPicker onClose={() => setThemePickerOpen(false)} />
+      )}
 
       {/* Toast notifications */}
       {toasts.length > 0 && (
