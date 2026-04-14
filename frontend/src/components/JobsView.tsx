@@ -452,6 +452,7 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
   const [zoom, setZoom] = useState(1);
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; nodeStartX: number; nodeStartY: number } | null>(null);
+  const [draggingGroup, setDraggingGroup] = useState<{ groupId: string; startX: number; startY: number; startPositions: Record<string, { x: number; y: number }> } | null>(null);
   const [panning, setPanning] = useState<{ startX: number; startY: number; offsetStartX: number; offsetStartY: number } | null>(null);
   const [canvasModalJobId, setCanvasModalJobId] = useState<string | null>(null);
   const [canvasModalTab, setCanvasModalTab] = useState<JobTab>("settings");
@@ -1137,6 +1138,8 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
   // Global mouse handlers for drag, pan, and selection box — stabilized with refs
   const draggingRef = useRef(dragging);
   draggingRef.current = dragging;
+  const draggingGroupRef = useRef(draggingGroup);
+  draggingGroupRef.current = draggingGroup;
   const panningRef = useRef(panning);
   panningRef.current = panning;
   const zoomRef = useRef(zoom);
@@ -1169,6 +1172,19 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
           const over = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
           setDragDeleteHover(over);
         }
+      }
+      const currentDraggingGroup = draggingGroupRef.current;
+      if (currentDraggingGroup) {
+        const dx = (e.clientX - currentDraggingGroup.startX) / currentZoom;
+        const dy = (e.clientY - currentDraggingGroup.startY) / currentZoom;
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didDrag.current = true;
+        setNodePositions((prev) => {
+          const next = { ...prev };
+          for (const [jobId, startPos] of Object.entries(currentDraggingGroup.startPositions)) {
+            next[jobId] = { x: startPos.x + dx, y: startPos.y + dy };
+          }
+          return next;
+        });
       }
       if (currentPanning) {
         const dx = e.clientX - currentPanning.startX;
@@ -1216,6 +1232,13 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
         setDragDeleteHover(false);
         setIsDraggingNode(false);
         setDragging(null);
+        setNodePositions((prev) => {
+          savePositions(prev, activeWorkspaceId);
+          return prev;
+        });
+      }
+      if (draggingGroupRef.current) {
+        setDraggingGroup(null);
         setNodePositions((prev) => {
           savePositions(prev, activeWorkspaceId);
           return prev;
@@ -2653,8 +2676,22 @@ export function JobsView({ jobs, agents, jobGroups, activeWorkspaceId, onCreateJ
             const isDropdownOpen = openDropdownGroup === group.id;
             return (
               <div key={`group-box-${group.id}`} style={{ position: "absolute", left: minX, top: minY - headerH, width: maxX - minX, height: maxY - minY + headerH, border: "1px solid var(--q-border)", borderRadius: 8, backgroundColor: "#0f0f0f80", pointerEvents: "none" }}>
-                {/* Group name label */}
-                <span style={{ position: "absolute", top: -12, left: 12, backgroundColor: "var(--q-bg-input)", padding: "0 6px", color: "var(--q-fg-muted)", fontSize: 9, fontFamily: font, whiteSpace: "nowrap" }}>{group.name}</span>
+                {/* Group name label — drag handle for moving the whole group */}
+                <span
+                  style={{ position: "absolute", top: -12, left: 12, backgroundColor: "var(--q-bg-input)", padding: "0 6px", color: "var(--q-fg-muted)", fontSize: 9, fontFamily: font, whiteSpace: "nowrap", pointerEvents: "auto", cursor: draggingGroup?.groupId === group.id ? "grabbing" : "grab", userSelect: "none" }}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.stopPropagation();
+                    didDrag.current = false;
+                    const snap: Record<string, { x: number; y: number }> = {};
+                    for (const jobId of group.jobIds) {
+                      const p = nodePositions[jobId];
+                      if (p) snap[jobId] = { x: p.x, y: p.y };
+                    }
+                    if (Object.keys(snap).length === 0) return;
+                    setDraggingGroup({ groupId: group.id, startX: e.clientX, startY: e.clientY, startPositions: snap });
+                  }}
+                >{group.name}</span>
                 {/* Pipeline header inside box */}
                 {hasExecs && (
                   <div style={{
